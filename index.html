@@ -365,17 +365,31 @@ function totals(list){
 const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
   .sort((a,b)=>b.h.cur-a.h.cur||a.s.name.localeCompare(b.s.name));
 
-/* Money-weighted return (XIRR): every buy is cash out, every sell cash in, today's
-   market value is the closing inflow. Imported flow-only records (noLot) are skipped:
-   their matching purchases aren't in the data, so counting their proceeds alone would
-   overstate the return. */
+/* Complete cash-flow history across all broker accounts (imported ledger) plus any
+   trades recorded in the app after the ledger ends. Holdings come from stocks/txns;
+   this drives Flows and lifetime return so neither double-counts the other. */
+function cashFlows(){
+  const led=(meta.history&&meta.history.ledger)||null;
+  if(led){
+    const end=meta.history.end||"";
+    const out=led.map(l=>({date:l.d,name:l.n,sym:l.s,side:l.b?"buy":"sell",qty:l.q,amt:l.v,approx:!!l.a}));
+    for(const t of Object.values(txns)){
+      if(!t.date||t.date<=end||t.noLot) continue;
+      const s=stocks[t.stockId]||{};
+      out.push({date:t.date,name:s.name||"?",sym:s.symbol||"",side:t.side,qty:t.qty,amt:t.qty*t.price});
+    }
+    return out.filter(f=>f.amt>0);
+  }
+  return Object.values(txns).filter(t=>!t.noLot&&t.qty*t.price>0).map(t=>{
+    const s=stocks[t.stockId]||{};
+    return {date:t.date,name:s.name||"?",sym:s.symbol||"",side:t.side,qty:t.qty,amt:t.qty*t.price};
+  });
+}
 function xirr(){
   const flows=[];
-  for(const t of Object.values(txns)){
-    if(t.noLot) continue;
-    const amt=t.qty*t.price;
-    if(!(amt>0)||!t.date) continue;
-    flows.push({d:new Date(t.date+"T00:00:00"),v:t.side==="buy"?-amt:amt});
+  for(const f of cashFlows()){
+    if(!f.date) continue;
+    flows.push({d:new Date(f.date+"T00:00:00"),v:f.side==="buy"?-f.amt:f.amt});
   }
   if(flows.length<2) return null;
   let cur=0;
@@ -558,12 +572,12 @@ function flowCutoff(){
 }
 function flowsHTML(){
   const cut=flowCutoff(), byM={};
-  for(const [id,t] of Object.entries(txns)){
-    if(!t.date||t.date<cut) continue;
-    const m=t.date.slice(0,7);
+  for(const f of cashFlows()){
+    if(!f.date||f.date<cut) continue;
+    const m=f.date.slice(0,7);
     (byM[m]=byM[m]||{net:0,rows:[]});
-    byM[m].net+=(t.side==="sell"?1:-1)*t.qty*t.price;
-    byM[m].rows.push({id,...t});
+    byM[m].net+=(f.side==="sell"?1:-1)*f.amt;
+    byM[m].rows.push(f);
   }
   const ms=Object.keys(byM).sort().reverse();
   const chips='<div class="chips">'+["3m","6m","1y","all"].map(p=>
@@ -575,14 +589,13 @@ function flowsHTML(){
     return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
       '<div class="bar"><i class="'+(v>0?"ret":"in")+'" style="left:0;width:'+w+'%"></i></div>'+
       '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button>'+
-      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
-        const s=stocks[t.stockId]||{name:"?"};
-        return '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
-          '<div class="nm">'+esc(s.name)+'</div>'+
+      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>
+        '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
+          '<div class="nm">'+esc(t.name)+(t.approx?' <span style="color:var(--faint);font-weight:400">≈</span>':"")+'</div>'+
           '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
-          '<div class="q mono">'+t.qty+' × '+price(t.price)+'</div>'+
-          '<div class="amt mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.qty*t.price)+'</div></div>';
-      }).join("")+"</div>":"");
+          '<div class="q mono">'+t.qty+' × '+price(t.amt/t.qty)+'</div>'+
+          '<div class="amt mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>'
+      ).join("")+"</div>":"");
   }).join("")+"</div>"+
   '<p class="hint" style="padding:0 4px">Your pocket’s view: money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions.</p>';
 }

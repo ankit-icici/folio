@@ -126,7 +126,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .frow .bar i.in{background:var(--gold)}
 .frow .bar i.ret{background:var(--gain)}
 .frow .a{width:104px;text-align:right;font-size:13px;font-weight:500}
-.mdet{border-top:1px solid var(--line2);background:var(--surface2);padding:4px 18px 8px}
+.mdet{border-top:1px solid var(--line2);background:var(--surface2);padding:2px 18px 8px}
+.fr{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
+.fr:first-child{border-top:0}
+.fl{flex:1;min-width:0}
+.fn{font-size:13px;font-weight:600;display:flex;align-items:baseline;gap:6px;min-width:0}
+.fn .nw{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn .tag{flex:none}
+.fs{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fa{font-size:13.5px;font-weight:500;white-space:nowrap;text-align:right}
+.tag{font-size:9px;font-weight:700;letter-spacing:.07em;padding:2px 5px;border-radius:4px}
+.tag.b{background:var(--gold-soft);color:var(--gold)}
+.tag.s{background:var(--gain-bg);color:var(--gain)}
+.apx{color:var(--faint);font-weight:400}
 .trow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
 .trow:first-child{border-top:0}
 .trow .d8{font-size:11px;color:var(--muted);width:78px}
@@ -591,13 +603,15 @@ function flowsHTML(){
     return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
       '<div class="bar"><i class="'+(v>0?"ret":"in")+'" style="left:0;width:'+w+'%"></i></div>'+
       '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button>'+
-      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>
-        '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
-          '<div class="nm">'+esc(t.name)+(t.approx?' <span style="color:var(--faint);font-weight:400">≈</span>':"")+'</div>'+
-          '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
-          '<div class="q mono">'+t.qty+' × '+price(t.amt/t.qty)+'</div>'+
-          '<div class="amt mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>'
-      ).join("")+"</div>":"");
+      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
+        const d=new Date(t.date+"T00:00:00");
+        const dl=isNaN(d)?t.date:d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+        return '<div class="fr"><div class="fl">'+
+          '<div class="fn"><span class="nw">'+esc(t.name)+(t.approx?' <span class="apx">≈</span>':"")+'</span>'+
+            '<span class="tag '+(t.side==="buy"?"b":"s")+'">'+t.side.toUpperCase()+'</span></div>'+
+          '<div class="fs mono">'+esc(dl)+' · '+t.qty+' × '+price(t.amt/t.qty)+'</div></div>'+
+          '<div class="fa mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>';
+      }).join("")+"</div>":"");
   }).join("")+"</div>"+
   '<p class="hint" style="padding:0 4px">Your pocket’s view: money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions.</p>';
 }

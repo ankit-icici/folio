@@ -1,4 +1,4 @@
-const CACHE = "folio-v4";
+const CACHE = "folio-v5";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

@@ -122,7 +122,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .frow .bar{flex:1;height:4px;border-radius:2px;background:var(--line2);overflow:hidden;position:relative}
 .frow .bar i{position:absolute;top:0;bottom:0;border-radius:2px}
 .frow .bar i.in{background:var(--gold)}
-.frow .bar i.out{background:var(--loss)}
+.frow .bar i.ret{background:var(--gain)}
 .frow .a{width:104px;text-align:right;font-size:13px;font-weight:500}
 .mdet{border-top:1px solid var(--line2);background:var(--surface2);padding:4px 18px 8px}
 .trow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
@@ -233,10 +233,6 @@ let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let tab="core", flowPeriod="all", openMonth=null, sortBy="inv";
 let targetDraft={}, planMode="add", planAmt="";
 const POOL2="Satellite";
-const PRESET={ "360ONE":{t:6,r:"OW"},ALIVUS:{t:9.5,r:"OW"},BANKBARODA:{t:6,r:"EW"},BHARTIARTL:{t:9,r:"EW"},
-  FIRSTCRY:{t:6,r:"EW"},CMSINFO:{t:6,r:"EW"},EDELWEISS:{t:14,r:"OW"},HDFCBANK:{t:9,r:"OW"},HCG:{t:6,r:"EW"},
-  MSTC:{t:3,r:"UW"},NUVAMA:{t:10,r:"OW"},SAMMAANCAP:{t:9.5,r:"EW"},TRANSRAILL:{t:3,r:"UW"},YATRA:{t:3,r:"UW"},
-  INDIGRID:{t:5,r:"EW",pool:"ipo"} };
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -353,7 +349,7 @@ function totals(list){
   return t;
 }
 const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
-  .sort((a,b)=>b.h.inv-a.h.inv||a.s.name.localeCompare(b.s.name));
+  .sort((a,b)=>b.h.cur-a.h.cur||a.s.name.localeCompare(b.s.name));
 const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
 
 /* ---------- render ---------- */
@@ -499,15 +495,7 @@ function planHTML(core){
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(cash-sumDelta)+'</b></span></div>'+
     '<div class="legend"><span><i class="achip under" style="padding:2px 7px">·</i> under-allocated</span><span><i class="achip mid" style="padding:2px 7px">·</i> near target</span><span><i class="achip over" style="padding:2px 7px">·</i> over-allocated</span></div>'+
     '</div>'+
-    '<div style="text-align:center;margin-top:12px"><button class="linky" id="presetBtn">Load proposed allocations (Sep 2026 sheet)</button></div>'+
     '<p class="hint" style="padding:0 4px">Targets are % of the new core total, computed together at portfolio level. “Now” compares actual vs target allocation; the action column tells you what to add or trim per stock. “Unallocated” is cash your targets don’t yet place.</p>';
-}
-function applyPreset(){
-  for(const s of Object.values(stocks)){
-    const p=s.symbol&&PRESET[s.symbol]; if(!p) continue;
-    s.target=p.t; s.rating=p.r; if(p.pool) s.pool=p.pool;
-  }
-  targetDraft={}; saveRemote(); render();
 }
 
 /* ---------- flows ---------- */
@@ -522,7 +510,7 @@ function flowsHTML(){
     if(!t.date||t.date<cut) continue;
     const m=t.date.slice(0,7);
     (byM[m]=byM[m]||{net:0,rows:[]});
-    byM[m].net+=(t.side==="buy"?1:-1)*t.qty*t.price;
+    byM[m].net+=(t.side==="sell"?1:-1)*t.qty*t.price;
     byM[m].rows.push({id,...t});
   }
   const ms=Object.keys(byM).sort().reverse();
@@ -533,18 +521,18 @@ function flowsHTML(){
   return chips+'<div class="flows">'+ms.map(m=>{
     const v=byM[m].net, w=max>0?Math.max(3,Math.abs(v)/max*100):0, open=openMonth===m;
     return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
-      '<div class="bar"><i class="'+(v>=0?"in":"out")+'" style="left:0;width:'+w+'%"></i></div>'+
-      '<div class="a mono '+(v>=0?"":"loss")+'">'+smoney(v)+'</div></button>'+
+      '<div class="bar"><i class="'+(v>0?"ret":"in")+'" style="left:0;width:'+w+'%"></i></div>'+
+      '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button>'+
       (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
         const s=stocks[t.stockId]||{name:"?"};
         return '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
           '<div class="nm">'+esc(s.name)+'</div>'+
           '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
           '<div class="q mono">'+t.qty+' × '+price(t.price)+'</div>'+
-          '<div class="amt mono '+(t.side==="buy"?"":"loss")+'">'+(t.side==="buy"?"+":"−")+rupee(t.qty*t.price)+'</div></div>';
+          '<div class="amt mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.qty*t.price)+'</div></div>';
       }).join("")+"</div>":"");
   }).join("")+"</div>"+
-  '<p class="hint" style="padding:0 4px">Net cash into (+) or out of (−) stocks. Tap a month for its transactions.</p>';
+  '<p class="hint" style="padding:0 4px">Your pocket’s view: money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions.</p>';
 }
 
 /* ---------- events ---------- */
@@ -574,8 +562,6 @@ function bindPlan(){
     planMode=b.dataset.v; render();});
   const pc=$("#planCash");
   if(pc) pc.addEventListener("input",()=>{planAmt=pc.value; refreshPlan();});
-  const pb=$("#presetBtn");
-  if(pb) pb.addEventListener("click",applyPreset);
   document.querySelectorAll("[data-plan-t]").forEach(inp=>{
     const id=inp.closest(".prl").dataset.id;
     inp.addEventListener("input",()=>{targetDraft[id]=inp.value; refreshPlan();});

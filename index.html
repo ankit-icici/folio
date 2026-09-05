@@ -71,19 +71,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .hbtn{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);padding:8px 2px;border-bottom:1px solid var(--gold)}
 .tbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:14px;line-height:1;color:var(--muted)}
 
-.hero{padding:20px 0 20px;border-bottom:1px solid var(--line)}
-.hero .big{font-size:42px;font-weight:600;letter-spacing:-.02em;margin:4px 0 14px;line-height:1.05}
-.stats{display:flex;gap:22px;flex-wrap:wrap}
-.stat .v{font-size:14.5px;font-weight:500}
-.stat .lbl{margin-top:2px}
-.hero .sub{margin-top:14px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.hero .sub b{color:var(--ink);font-weight:500}
-.live{display:inline-flex;align-items:center;gap:5px}
-.live i{width:7px;height:7px;border-radius:50%;background:var(--gain);display:inline-block}
-.live.off i{background:var(--faint)}
-.glbar{margin-top:9px;height:3px;border-radius:2px;overflow:hidden;display:flex;background:var(--line2)}
+.hero{padding:16px 0 4px}
+.hcard{background:linear-gradient(140deg,#191817 0%,#23201B 55%,#2C261C 100%);border:1px solid rgba(212,178,116,.28);border-radius:20px;padding:20px 20px 16px;color:#ECEAE4;box-shadow:0 12px 32px rgba(20,18,14,.28)}
+.hgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px 12px}
+.hk{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,234,228,.45);font-weight:600;margin-bottom:4px}
+.hv{font-size:19.5px;font-weight:600;letter-spacing:-.01em;line-height:1.15}
+.hv small{font-size:12px;font-weight:500;opacity:.9}
+.hgrid .r{text-align:right}
+.hcard .gain{color:#57D9A3}.hcard .loss{color:#F49790}
+.gl{display:flex;justify-content:space-between;align-items:baseline;margin-top:18px;font-size:12.5px;color:rgba(236,234,228,.75)}
+.gl b{font-weight:700;color:#ECEAE4;font-size:14px}
+.live{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;letter-spacing:.05em;color:rgba(236,234,228,.5)}
+.live i{width:6px;height:6px;border-radius:50%;background:#57D9A3;display:inline-block}
+.live.off i{background:rgba(236,234,228,.35)}
+.glbar{margin-top:9px;height:5px;border-radius:3px;overflow:hidden;display:flex;background:rgba(255,255,255,.12)}
 .glbar i{height:100%}
-.glbar .g{background:var(--gain)} .glbar .l{background:var(--loss)}
+.glbar .g{background:#57D9A3;border-radius:3px 0 0 3px} .glbar .l{background:#F49790;flex:1;border-radius:0 3px 3px 0}
 
 .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
 .seg button{padding:9px 0;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -377,19 +380,24 @@ function render(){
   }
   bind();
 }
+const kabs=n=>{const a=Math.abs(n);
+  return a>=100000?"₹"+new Intl.NumberFormat("en-US",{minimumFractionDigits:1,maximumFractionDigits:1}).format(a/1000)+"K":"₹"+inr0.format(Math.round(a));};
+const skfmt=n=>sgn(n)+kabs(n);
 function heroHTML(t){
   const liveTag='<span class="live'+(live?"":" off")+'"><i></i>'+
-    (pendingSave?"saving…":(live?"live":"offline"))+
+    (pendingSave?"SAVING…":(live?"LIVE":"OFFLINE"))+
     (meta.updatedAt?' · '+esc(ago(meta.updatedAt)):"")+'</span>';
-  return '<div class="lbl">Current value</div>'+
-    '<div class="big mono">'+rupee(t.cur)+'</div>'+
-    '<div class="stats">'+
-      '<div class="stat"><div class="v mono '+cls(t.pl)+'">'+smoney(t.pl)+' · '+spct(t.plPct)+'</div><div class="lbl">Net P&L</div></div>'+
-      '<div class="stat"><div class="v mono '+cls(t.day)+'">'+smoney(t.day)+' · '+spct(t.dayPct)+'</div><div class="lbl">Today</div></div>'+
-      '<div class="stat"><div class="v mono">'+rupee(t.inv)+'</div><div class="lbl">Invested</div></div>'+
+  const g=t.up,l=t.down,tot=g+l;
+  return '<div class="hcard">'+
+    '<div class="hgrid">'+
+      '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(t.cur)+'</div></div>'+
+      '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(t.inv)+'</div></div>'+
+      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(t.pl)+'">'+skfmt(t.pl)+' <small>('+spct(t.plPct)+')</small></div></div>'+
+      '<div class="r"><div class="hk">Day P&L</div><div class="hv mono '+cls(t.day)+'">'+skfmt(t.day)+' <small>('+spct(t.dayPct)+')</small></div></div>'+
     '</div>'+
-    '<div class="sub"><span><b class="gain">'+t.up+'</b> up · <b class="loss">'+t.down+'</b> down</span>'+liveTag+'</div>'+
-    ((t.up+t.down)>0?'<div class="glbar"><i class="g" style="width:'+(t.up/(t.up+t.down)*100)+'%"></i><i class="l" style="flex:1"></i></div>':"");
+    '<div class="gl"><span><b>'+g+'</b> Gainers</span>'+liveTag+'<span><b>'+l+'</b> Losers</span></div>'+
+    (tot>0?'<div class="glbar"><i class="g" style="width:'+(g/tot*100)+'%"></i><i class="l"></i></div>':"")+
+  '</div>';
 }
 const kv=(k,v,r)=>'<div class="kv'+(r?" r":"")+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
 function cardHTML(x,coreInv){

@@ -1,4 +1,4 @@
-# Nivesh
+# Folio
 
 A minimal, installable PWA for tracking personal Indian stock portfolios — live NSE prices, FIFO lot accounting, allocation targets with portfolio-level rebalancing, and month-wise cash flows.
 

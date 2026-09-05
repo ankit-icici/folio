@@ -1,6 +1,6 @@
 {
-  "name": "Nivesh",
-  "short_name": "Nivesh",
+  "name": "Folio",
+  "short_name": "Folio",
   "description": "Personal stock portfolio tracker with live NSE prices",
   "start_url": ".",
   "scope": ".",

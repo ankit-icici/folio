@@ -213,7 +213,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 <script>
 "use strict";
 /* ---------- config & state ---------- */
-let CFG=null; try{CFG=JSON.parse(localStorage.getItem("nivesh_cfg")||"null");}catch(e){}
+const BACKEND="https://script.google.com/macros/s/AKfycbzobVO5l1czLdkX4tH3k2HxG_ZIJX8CVbEUU5yDeM9AqHNXUN6oGD7MP_UqzLYJaHM9xw/exec";
+let AUTH=null; try{AUTH=JSON.parse(localStorage.getItem("nivesh_auth")||"null");}catch(e){}
+const api=q=>BACKEND+"?u="+encodeURIComponent(AUTH.u)+"&p="+encodeURIComponent(AUTH.p)+(q?"&"+q:"");
+const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — try again in a few minutes.",
+  username_taken:"That username is taken.",bad_username:"Username: 3–20 letters, digits, - or _.",
+  pin_too_short:"PIN must be at least 4 characters."};
+const errMsg=c=>ERRS[c]||("Error: "+c);
 let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let tab="core", flowPeriod="all", openMonth=null;
 let targetDraft={}, planMode="add", planAmt="";
@@ -258,14 +264,14 @@ function cycleTheme(){
 }
 
 /* ---------- persistence ---------- */
-function cacheLocal(){ try{localStorage.setItem("nivesh_cache",JSON.stringify({stocks,txns,meta}));}catch(e){} }
+function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta}));}catch(e){} }
 function saveRemote(){
+  if(!AUTH) return;
   cacheLocal();
-  if(!CFG) return;
   clearTimeout(saveTimer); pendingSave=true; renderHeroOnly();
   saveTimer=setTimeout(async()=>{
     try{
-      const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key),{method:"POST",headers:{"Content-Type":"text/plain"},
+      const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
         body:JSON.stringify({action:"save",data:{stocks,txns,savedAt:new Date().toISOString()}})});
       const j=await r.json(); pendingSave=!j.saved;
     }catch(e){ pendingSave=true; }
@@ -273,10 +279,11 @@ function saveRemote(){
   },1200);
 }
 async function loadRemote(){
-  if(!CFG) return false;
+  if(!AUTH) return false;
   try{
-    const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key)+"&action=load");
+    const r=await fetch(api("action=load"));
     const j=await r.json();
+    if(j.error){ ready=true; live=false; return false; }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
     ready=true; live=true; cacheLocal(); return true;
   }catch(e){ ready=true; live=false; return false; }
@@ -284,11 +291,11 @@ async function loadRemote(){
 
 /* ---------- live quotes ---------- */
 async function pollQuotes(){
-  if(!CFG||document.hidden) return;
+  if(!AUTH||document.hidden) return;
   const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
   if(!syms.length) return;
   try{
-    const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key)+"&action=quotes&symbols="+syms.join(","));
+    const r=await fetch(api("action=quotes&symbols="+syms.join(",")));
     const j=await r.json();
     if(j.quotes){
       for(const s of Object.values(stocks)){
@@ -351,13 +358,18 @@ function shellHTML(){
     '<div id="content"></div></div>'+
     '<button class="fab" id="fab" aria-label="Add stock">+</button>';
 }
-function setupHTML(msg){
+function setupHTML(mode){
+  const isNew=mode==="new";
   return '<div class="setup"><div class="wordmark">Nivesh<span>.</span></div>'+
-    '<p>Connect your personal quote relay to begin.<br>Paste the backend URL and key you were given.</p>'+
-    '<div class="f"><label>Backend URL</label><input id="cUrl" class="mono" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></div>'+
-    '<div class="f"><label>Key</label><input id="cKey" class="mono" autocomplete="off"></div>'+
-    '<div class="err" id="cErr"'+(msg?' style="display:block"':'')+'>'+esc(msg||"")+'</div>'+
-    '<button class="primary" id="cGo">Connect</button></div>';
+    '<p>'+(isNew?"Pick a username and a PIN.<br>Your portfolio stays private to them.":"Welcome back.")+'</p>'+
+    '<div class="togg full" id="authT" style="margin-bottom:4px">'+
+      '<button aria-pressed="'+!isNew+'" data-v="in">Sign in</button>'+
+      '<button aria-pressed="'+isNew+'" data-v="new">Create account</button></div>'+
+    '<div class="f"><label>Username</label><input id="cUser" class="mono" autocapitalize="none" autocomplete="username" placeholder="e.g. ankit"></div>'+
+    '<div class="f"><label>PIN</label><input id="cPin" class="mono" type="password" inputmode="numeric" autocomplete="'+(isNew?"new-password":"current-password")+'" placeholder="min 4 digits"></div>'+
+    (isNew?'<div class="f"><label>Confirm PIN</label><input id="cPin2" class="mono" type="password" inputmode="numeric" autocomplete="new-password"></div>':"")+
+    '<div class="err" id="cErr"></div>'+
+    '<button class="primary" id="cGo">'+(isNew?"Create & start":"Sign in")+'</button></div>';
 }
 function safeRender(){
   const ae=document.activeElement;
@@ -732,20 +744,31 @@ function pricesSheet(){
 }
 
 /* settings */
+function signOut(){
+  try{localStorage.removeItem("nivesh_auth");}catch(e){}
+  AUTH=null; stocks={}; txns={}; meta={}; ready=false;
+  sheetOpen=false; $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on");
+  mountSetup("in");
+}
 function cfgSheet(){
-  openSheet("Settings",
-    '<div class="f"><label>Backend URL</label><input id="sUrl" class="mono" value="'+esc(CFG?CFG.url:"")+'"></div>'+
-    '<div class="f"><label>Key</label><input id="sKey" class="mono" value="'+esc(CFG?CFG.key:"")+'"></div>'+
-    '<div class="err" id="sErr"></div>'+
-    '<button class="primary" id="sGo">Save & reconnect</button>'+
+  openSheet("Account",
+    '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Your portfolio is private to this username and PIN — anyone with the app link can create their own account.</p>'+
+    '<button class="primary" id="sOut">Sign out</button>'+
     '<button class="ghost" id="sExp">Export backup (JSON)</button>'+
     '<button class="ghost" id="sImp">Restore from backup</button>'+
-    '<p class="hint">Data lives in nivesh-data.json in your Google Drive, synced through your own Apps Script relay. The backup file is a full snapshot you can restore anywhere.</p>');
-  $("#sGo").addEventListener("click",async()=>{
-    const url=$("#sUrl").value.trim(), key=$("#sKey").value.trim();
-    if(!url||!key) return showErr("#sErr","Both fields are required.");
-    CFG={url,key}; try{localStorage.setItem("nivesh_cfg",JSON.stringify(CFG));}catch(e){}
-    closeSheet(); await loadRemote(); render(); pollQuotes();
+    '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete account & data</button>'+
+    '<div class="err" id="sErr"></div>');
+  $("#sOut").addEventListener("click",signOut);
+  $("#sDel").addEventListener("click",async e=>{
+    const b=e.currentTarget;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Really delete everything?"; return; }
+    try{
+      const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"unregister"})});
+      const j=await r.json();
+      if(j.error) return showErr("#sErr",errMsg(j.error));
+      try{localStorage.removeItem("nivesh_cache_"+AUTH.u);}catch(e2){}
+      signOut();
+    }catch(e2){ showErr("#sErr","Could not reach the server."); }
   });
   $("#sExp").addEventListener("click",()=>{
     const blob=new Blob([JSON.stringify({stocks,txns,exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
@@ -782,28 +805,37 @@ function mountShell(){
   $("#fab").addEventListener("click",addSheet);
   $("#seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setTab(b.dataset.tab);});
 }
-function mountSetup(msg){
-  $("#app").innerHTML=setupHTML(msg);
+function mountSetup(mode){
+  mode=mode||"in";
+  $("#app").innerHTML=setupHTML(mode);
   applyTheme();
+  $("#authT").addEventListener("click",e=>{const b=e.target.closest("button");if(b&&b.dataset.v!==mode)mountSetup(b.dataset.v);});
   $("#cGo").addEventListener("click",async()=>{
-    const url=$("#cUrl").value.trim(), key=$("#cKey").value.trim();
-    if(!url||!key) return showErr("#cErr","Both fields are required.");
+    const u=$("#cUser").value.trim().toLowerCase(), pin=$("#cPin").value;
+    if(!u||!pin) return showErr("#cErr","Both fields are required.");
+    if(mode==="new"&&pin!==$("#cPin2").value) return showErr("#cErr","PINs don't match.");
     $("#cGo").disabled=true;
     try{
-      const r=await fetch(url+"?k="+encodeURIComponent(key)+"&action=load");
+      if(mode==="new"){
+        const rr=await fetch(BACKEND+"?u="+encodeURIComponent(u)+"&p="+encodeURIComponent(pin),
+          {method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify({action:"register"})});
+        const jj=await rr.json();
+        if(jj.error) throw new Error(errMsg(jj.error));
+      }
+      const r=await fetch(BACKEND+"?u="+encodeURIComponent(u)+"&p="+encodeURIComponent(pin)+"&action=load");
       const j=await r.json();
-      if(j.error) throw new Error(j.error);
-      CFG={url,key}; try{localStorage.setItem("nivesh_cfg",JSON.stringify(CFG));}catch(e){}
-      if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
+      if(j.error) throw new Error(errMsg(j.error));
+      AUTH={u,p:pin}; try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e){}
+      if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; } else { stocks={}; txns={}; }
       ready=true; live=true; cacheLocal();
       mountShell(); render(); pollQuotes();
-    }catch(e){ $("#cGo").disabled=false; showErr("#cErr","Could not connect: "+e.message); }
+    }catch(e){ $("#cGo").disabled=false; showErr("#cErr",e.message); }
   });
 }
 (async function boot(){
   if("serviceWorker" in navigator){ try{navigator.serviceWorker.register("sw.js");}catch(e){} }
-  if(!CFG){ mountSetup(); return; }
-  try{ const c=JSON.parse(localStorage.getItem("nivesh_cache")||"null");
+  if(!AUTH){ mountSetup("in"); return; }
+  try{ const c=JSON.parse(localStorage.getItem("nivesh_cache_"+AUTH.u)||"null");
     if(c){ stocks=c.stocks||{}; txns=c.txns||{}; meta=c.meta||{}; ready=true; } }catch(e){}
   mountShell(); render();
   await loadRemote(); render(); pollQuotes();

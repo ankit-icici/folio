@@ -87,6 +87,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .glbar{margin-top:9px;height:5px;border-radius:3px;overflow:hidden;display:flex;background:rgba(255,255,255,.12)}
 .glbar i{height:100%}
 .glbar .g{background:#57D9A3;border-radius:3px 0 0 3px} .glbar .l{background:#F49790;flex:1;border-radius:0 3px 3px 0}
+.cagr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,178,116,.22)}
+.cagr .gain{color:#57D9A3}.cagr .loss{color:#F49790}
 
 .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
 .seg button{padding:9px 0;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
@@ -362,6 +364,34 @@ function totals(list){
 }
 const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
   .sort((a,b)=>b.h.cur-a.h.cur||a.s.name.localeCompare(b.s.name));
+
+/* lifetime money-weighted return (XIRR): every buy is cash out, every sell cash in,
+   today's market value is the closing inflow. */
+function xirr(){
+  const flows=[];
+  for(const t of Object.values(txns)){
+    const amt=t.qty*t.price;
+    if(!(amt>0)||!t.date) continue;
+    flows.push({d:new Date(t.date+"T00:00:00"),v:t.side==="buy"?-amt:amt});
+  }
+  if(flows.length<2) return null;
+  let cur=0;
+  for(const id of Object.keys(stocks)) cur+=holding(id).qty*(stocks[id].price||0);
+  if(!(cur>0)) return null;
+  const now=new Date(today()+"T00:00:00");
+  flows.push({d:now,v:cur});
+  const first=flows.reduce((a,f)=>f.d<a?f.d:a,flows[0].d);
+  const years=(now-first)/(365.25*864e5);
+  if(years<0.25) return null;
+  if(!flows.some(f=>f.v<0)||!flows.some(f=>f.v>0)) return null;
+  const npv=r=>flows.reduce((s,f)=>s+f.v/Math.pow(1+r,(f.d-first)/(365.25*864e5)),0);
+  let lo=-0.95,hi=5;
+  if(npv(lo)<0||npv(hi)>0) return null;
+  for(let i=0;i<200;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
+  const r=(lo+hi)/2;
+  if(!isFinite(r)) return null;
+  return {rate:r*100,years,since:first};
+}
 const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
 
 /* ---------- render ---------- */
@@ -435,7 +465,15 @@ function heroHTML(t){
     '</div>'+
     '<div class="gl"><span><b>'+g+'</b> Gainers</span>'+liveTag+'<span><b>'+l+'</b> Losers</span></div>'+
     (tot>0?'<div class="glbar"><i class="g" style="width:'+(g/tot*100)+'%"></i><i class="l"></i></div>':"")+
+    cagrHTML()+
   '</div>';
+}
+function cagrHTML(){
+  const x=xirr(); if(!x) return "";
+  const since=x.since.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
+  return '<div class="cagr"><span class="hk" style="margin:0">Return since '+esc(since)+'</span>'+
+    '<span class="mono '+(x.rate>=0?"gain":"loss")+'" style="font-size:15px;font-weight:600">'+
+    sgn(x.rate)+Math.abs(x.rate).toFixed(1)+'% <small style="font-weight:400;opacity:.65">per year</small></span></div>';
 }
 const kv=(k,v,r)=>'<div class="kv'+(r?" r":"")+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
 function cardHTML(x,coreInv){

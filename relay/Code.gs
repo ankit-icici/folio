@@ -1,15 +1,14 @@
-// Nivesh multi-user backend — deploy on YOUR OWN Google account to host your
-// own instance of the app.
-// 1. Go to script.google.com/create and paste this whole file.
-// 2. Deploy → New deployment → Web app → Execute as: Me → Who has access: Anyone
-//    → Deploy → Authorize when Google asks.
-// 3. Put the /exec URL into the BACKEND constant in index.html and host the app.
+// Folio multi-user backend (v3) — deploy on YOUR OWN Google account to host
+// your own instance (script.google.com → paste → Deploy → Web app →
+// Execute as: Me → Who has access: Anyone → Authorize).
 //
-// Every user of your instance creates a username + PIN in the app; each account's
-// portfolio is stored as its own JSON file in YOUR Google Drive. Wrong-PIN
-// attempts are rate-limited; quotes are cached 45 s so users share fetch quota.
+// Durability: every save of an existing account first snapshots the previous
+// state into a "Folio Backups" Drive folder (one per day, kept 60 days), and a
+// save that would wipe most of an account's data is rejected unless the client
+// passes force:true (used only by the in-app Restore flow).
 
 var FILE_PREFIX='nivesh-acc-';
+var BK_FOLDER='Folio Backups';
 
 function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);}
 function sha_(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(b){b=(b+256)%256;return (b<16?'0':'')+b.toString(16);}).join('');}
@@ -32,9 +31,23 @@ function fileFor_(h){
   var it=DriveApp.getFilesByName(name);
   return {name:name,f:it.hasNext()?it.next():null};
 }
+function bkFolder_(){var it=DriveApp.getFoldersByName(BK_FOLDER);return it.hasNext()?it.next():DriveApp.createFolder(BK_FOLDER);}
+function snapshot_(h,f){
+  try{
+    var day=Utilities.formatDate(new Date(),'UTC','yyyy-MM-dd');
+    var name='snap-'+h.slice(0,8)+'-'+day+'.json';
+    var fo=bkFolder_();
+    if(fo.getFilesByName(name).hasNext()) return;
+    fo.createFile(name,f.getBlob().getDataAsString(),'application/json');
+    var cutoff=new Date(Date.now()-60*86400000);
+    var it=fo.getFiles();
+    while(it.hasNext()){var g=it.next();var n=g.getName();
+      if(n.indexOf('snap-'+h.slice(0,8)+'-')===0){var d=new Date(n.slice(-15,-5));if(!isNaN(d)&&d<cutoff)g.setTrashed(true);}}
+  }catch(e){}
+}
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:2});
+  if(p.action==='ping') return json_({ok:true,v:3});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u});
@@ -42,10 +55,20 @@ function doGet(e){
     var ff=fileFor_(a.h);
     return json_({data:ff.f?JSON.parse(ff.f.getBlob().getDataAsString()):null,t:new Date().toISOString()});
   }
+  if(p.action==='snapshots'){
+    var fo=bkFolder_(),it=fo.getFiles(),out=[];
+    while(it.hasNext()){var g=it.next();if(g.getName().indexOf('snap-'+a.h.slice(0,8)+'-')===0)out.push(g.getName());}
+    return json_({snapshots:out.sort()});
+  }
+  if(p.action==='snapshot'){
+    var nm='snap-'+a.h.slice(0,8)+'-'+String(p.day||'')+'.json';
+    var it2=bkFolder_().getFilesByName(nm);
+    return it2.hasNext()?json_({data:JSON.parse(it2.next().getBlob().getDataAsString())}):json_({error:'no_snapshot'});
+  }
   if(p.action==='quotes'){
     var syms=String(p.symbols||'').split(',').filter(function(s){return s;}).slice(0,60);
-    var out={},missing=[],c=cache_();
-    syms.forEach(function(s){var v=c.get('q:'+s);if(v){out[s]=JSON.parse(v);}else{missing.push(s);}});
+    var out2={},missing=[],c=cache_();
+    syms.forEach(function(s){var v=c.get('q:'+s);if(v){out2[s]=JSON.parse(v);}else{missing.push(s);}});
     if(missing.length){
       var reqs=missing.map(function(s){return {url:'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+'.NS?interval=1d&range=5d',muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}};});
       try{
@@ -54,12 +77,12 @@ function doGet(e){
           try{
             var j=JSON.parse(r.getContentText());
             var cl=(j.chart.result[0].indicators.quote[0].close||[]).filter(function(x){return x!=null;});
-            if(cl.length>=2){var q={p:Math.round(cl[cl.length-1]*100)/100,pc:Math.round(cl[cl.length-2]*100)/100};out[missing[i]]=q;c.put('q:'+missing[i],JSON.stringify(q),45);}
+            if(cl.length>=2){var q={p:Math.round(cl[cl.length-1]*100)/100,pc:Math.round(cl[cl.length-2]*100)/100};out2[missing[i]]=q;c.put('q:'+missing[i],JSON.stringify(q),45);}
           }catch(err){}
         });
       }catch(err){}
     }
-    return json_({quotes:out,t:new Date().toISOString()});
+    return json_({quotes:out2,t:new Date().toISOString()});
   }
   return json_({ok:true});
 }
@@ -80,13 +103,26 @@ function doPost(e){
   if(a.err) return json_({error:a.err});
   if(body.action==='save'){
     var ff=fileFor_(a.h);
-    var s=JSON.stringify(body.data);
-    if(ff.f){ff.f.setContent(s);}else{DriveApp.createFile(ff.name,s,'application/json');}
+    var inc=body.data||{};
+    var inTx=Object.keys(inc.txns||{}).length, inSt=Object.keys(inc.stocks||{}).length;
+    if(ff.f&&body.force!==true){
+      try{
+        var old=JSON.parse(ff.f.getBlob().getDataAsString());
+        var oldTx=Object.keys(old.txns||{}).length, oldSt=Object.keys(old.stocks||{}).length;
+        if((oldSt>0&&inSt===0)||(oldTx>=20&&inTx<oldTx*0.5))
+          return json_({error:'suspicious_save',oldTx:oldTx,inTx:inTx,oldSt:oldSt,inSt:inSt});
+      }catch(e2){}
+    }
+    var s=JSON.stringify(inc);
+    if(ff.f){snapshot_(a.h,ff.f);ff.f.setContent(s);}
+    else{DriveApp.createFile(ff.name,s,'application/json');}
     return json_({saved:true,t:new Date().toISOString()});
   }
   if(body.action==='unregister'){
     var ff2=fileFor_(a.h);
     if(ff2.f) ff2.f.setTrashed(true);
+    try{var fo=bkFolder_(),it=fo.getFiles();
+      while(it.hasNext()){var g=it.next();if(g.getName().indexOf('snap-'+a.h.slice(0,8)+'-')===0)g.setTrashed(true);}}catch(e3){}
     props_().deleteProperty('u:'+a.u);
     return json_({deleted:true});
   }

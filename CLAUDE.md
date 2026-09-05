@@ -44,7 +44,19 @@ Data shape (one document per account):
 ```js
 stocks[id] = { name, symbol, pool:'core'|'ipo', price, prevClose, target, rating?, closed?, createdAt }
 txns[id]   = { stockId, side:'buy'|'sell', qty, price, date:'YYYY-MM-DD', seq, noLot? }
+history    = { ledger:[{d,s,n,b,q,v,a?}], end:'YYYY-MM-DD', sources:'…' }   // optional
 ```
+
+**Two separate concerns — do not merge them.** `stocks`/`txns` describe **positions** (what is
+held now, at what cost). `history` is an imported **cash-flow ledger** covering every real
+broker transaction across all of the owner's accounts, and drives **Flows** and the **lifetime
+CAGR** only. Keeping them apart is deliberate: broker order histories omit bonus/rights shares
+and some brokers only expose 1–2 financial years, so rebuilding positions from them loses
+shares and cost basis. `cashFlows()` returns the ledger plus any in-app txn dated after
+`history.end`, so nothing is double-counted and new trades flow in automatically.
+
+Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n` name,
+`b` 1=buy/0=sell, `q` qty, `v` rupee value, `a` 1 = approximate date (shown as ≈ in the UI).
 
 - `pool:'ipo'` is the **Satellite** pool (label lives in the `POOL2` constant): counts in the
   dashboard, excluded from allocation % and the rebalance plan.
@@ -110,6 +122,15 @@ signed-in page (`api()`, `stocks`, `txns` are all in scope), e.g.
   show the offline state, never a blank screen.
 - Sorting default is **current value**, not invested amount.
 - Flows are shown from the user's pocket's perspective: buys negative, sells positive/green.
+- **Never count a sell whose matching buy isn't in the data** — it reads as free income and
+  inflates the return. This produced a wrong CAGR once (26.9% vs the true 20.2% at the time).
+  Either import both sides, or exclude the record from the return calculation.
+- Broker exports are dirty: Groww emits **₹0 "SELL" rows for off-market transfers** between the
+  owner's own accounts (drop them — internal moves, not trades) and for rights/bonus
+  entitlements, and some rows carry corrupt dates (year 1971). ICICI Direct's UI exposes only
+  the current and previous financial year, so its older trades are simply unavailable.
+- Mobile first: transaction rows are two lines (name + chip, then date · qty × price) with the
+  amount on the right. Five-column table layouts truncate names to "He…" on a phone.
 
 ## Design language
 

@@ -8,10 +8,10 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
 
 ## What it does
 
-- **Dashboard** — current value, total investment, unrealised P&L, day P&L, gainers/losers split
+- **Dashboard** — current value, total investment, unrealised P&L, day P&L, gainers/losers split, and lifetime **CAGR** (money-weighted XIRR over your full transaction history, recomputed live)
 - **Core** — full detail per holding: qty, last price, current value, unrealised P&L and %, day P&L, average buy, invested, and allocation %. Sort by value, name, or day %
 - **Satellite** — holdings that count in the dashboard but sit outside allocation and rebalancing (REITs/InvITs, IPO flips, anything you don't want in the core allocation maths)
-- **Flows** — net cash in/out per month from your pocket's perspective (buys −, sells +green), with every transaction listed per month and 3M/6M/1Y/All filters
+- **Flows** — net cash in/out per month from your pocket's perspective (buys −, sells +green), with every transaction listed per month and 3M/6M/1Y/All filters. Can be backed by an imported multi-account ledger so history predates the app itself
 - **Plan** — set a target % per core stock, optionally add or withdraw cash, and get per-stock "Add ₹X · n shares" / "Trim ₹X" instructions computed together at portfolio level. Allocation status is colour-coded: red under-allocated, orange near target, green over-allocated
 - **Buy/Sell** with FIFO lot accounting (sell preview shows FIFO cost and realised gain), plus per-stock edit and bulk paste-import of holdings
 - Live NSE prices every 15 s, light/dark/auto themes, works offline against the last synced state
@@ -27,6 +27,16 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
   - `POST {action:unregister}` — delete the account, its data, and its snapshots
 - `sw.js` + `manifest.webmanifest` — installable, offline-capable shell
 - `CLAUDE.md` — architecture notes, release runbook, and hard-won gotchas for future work
+
+### Positions vs history
+
+An account document holds two independent things: `stocks`/`txns` describe **what you hold and
+at what cost**, while an optional `history` ledger holds **every real broker transaction**,
+including positions closed years ago and accounts held elsewhere. Flows and the lifetime CAGR
+read the ledger (plus anything recorded in the app after it ends); holdings never do. They are
+kept apart on purpose — broker order exports omit bonus and rights shares, and some brokers
+only expose one or two financial years, so reconstructing positions from them would quietly
+lose shares and cost basis.
 
 ## Data durability
 

@@ -222,7 +222,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 <script>
 "use strict";
 /* ---------- config & state ---------- */
-const BACKEND="https://script.google.com/macros/s/AKfycbxY7jM6dM040MH4j8X5KIVEwJdslET3iPjO9IVPsoRc_sU4wm3qtc1QDz4mvZa7ZFo4eg/exec";
+const BACKEND="https://script.google.com/macros/s/AKfycbyCNQActuQE9F8aNPZsISFMlWWJf2Mj1jRT2Em-jSC4ZCENFKdgrEvHWX46HxaxDd_kYw/exec";
 let AUTH=null; try{AUTH=JSON.parse(localStorage.getItem("nivesh_auth")||"null");}catch(e){}
 const api=q=>BACKEND+"?u="+encodeURIComponent(AUTH.u)+"&p="+encodeURIComponent(AUTH.p)+(q?"&"+q:"");
 const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — try again in a few minutes.",
@@ -781,15 +781,44 @@ function signOut(){
   sheetOpen=false; $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on");
   mountSetup("in");
 }
+async function restoreSheet(){
+  openSheet("Restore points","<p class='hint' style='margin-top:4px'>Loading…</p>");
+  let list=[];
+  try{ const j=await fetch(api("action=snapshots")).then(r=>r.json()); list=j.snapshots||[]; }
+  catch(e){ $("#sheetBody").innerHTML="<p class='hint'>Could not reach the server.</p>"; return; }
+  const parse=n=>{const keep=n.indexOf("keep-")===0; const key=n.replace(/^(snap|keep)-[0-9a-f]+-/,"").replace(".json","");
+    return {n,keep,key};};
+  const rows=list.map(parse).sort((a,b)=>a.key<b.key?1:-1);
+  if(!rows.length){ $("#sheetBody").innerHTML="<p class='hint'>No restore points yet — the first one is created the next time your data changes.</p>"; return; }
+  $("#sheetBody").innerHTML=
+    "<p class='hint' style='margin-top:4px'>Every day’s state for the last 60 days, plus one permanent archive per month that is never deleted.</p>"+
+    rows.map(r=>'<div class="trow"><div class="nm">'+esc(r.key)+'</div>'+
+      '<div class="side" style="width:auto;color:var(--faint);font-weight:600">'+(r.keep?"MONTHLY":"DAILY")+'</div>'+
+      '<button class="del" data-key="'+esc(r.key)+'">Restore</button></div>').join("")+
+    '<div class="err" id="rsErr"></div>';
+  $("#sheetBody").addEventListener("click",async e=>{
+    const b=e.target.closest("[data-key]"); if(!b) return;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Confirm?"; return; }
+    b.textContent="…";
+    try{
+      const j=await fetch(api("action=snapshot&day="+encodeURIComponent(b.dataset.key))).then(r=>r.json());
+      if(j.error||!j.data) return showErr("#rsErr","Could not load that restore point.");
+      stocks=j.data.stocks||{}; txns=j.data.txns||{};
+      saveRemote(true); closeSheet();
+    }catch(e2){ showErr("#rsErr","Could not reach the server."); }
+  });
+}
 function cfgSheet(){
   openSheet("Account",
     '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Your portfolio is private to this username and PIN — anyone with the app link can create their own account.</p>'+
     '<button class="primary" id="sOut">Sign out</button>'+
+    '<button class="ghost" id="sHist">Restore points</button>'+
     '<button class="ghost" id="sExp">Export backup (JSON)</button>'+
     '<button class="ghost" id="sImp">Restore from backup</button>'+
     '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete account & data</button>'+
     '<div class="err" id="sErr"></div>');
   $("#sOut").addEventListener("click",signOut);
+  $("#sHist").addEventListener("click",restoreSheet);
   $("#sDel").addEventListener("click",async e=>{
     const b=e.currentTarget;
     if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Really delete everything?"; return; }

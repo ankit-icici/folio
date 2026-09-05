@@ -1,9 +1,9 @@
-// Folio multi-user backend (v3) — deploy on YOUR OWN Google account to host
+// Folio multi-user backend (v4) — deploy on YOUR OWN Google account to host
 // your own instance (script.google.com → paste → Deploy → Web app →
 // Execute as: Me → Who has access: Anyone → Authorize).
 //
 // Durability: every save of an existing account first snapshots the previous
-// state into a "Folio Backups" Drive folder (one per day, kept 60 days), and a
+// state into a "Folio Backups" Drive folder (daily, kept 60 days) plus one permanent monthly archive that is never deleted, and a
 // save that would wipe most of an account's data is rejected unless the client
 // passes force:true (used only by the in-app Restore flow).
 
@@ -34,20 +34,31 @@ function fileFor_(h){
 function bkFolder_(){var it=DriveApp.getFoldersByName(BK_FOLDER);return it.hasNext()?it.next():DriveApp.createFolder(BK_FOLDER);}
 function snapshot_(h,f){
   try{
-    var day=Utilities.formatDate(new Date(),'UTC','yyyy-MM-dd');
-    var name='snap-'+h.slice(0,8)+'-'+day+'.json';
+    var now=new Date();
+    var day=Utilities.formatDate(now,'UTC','yyyy-MM-dd');
+    var mon=Utilities.formatDate(now,'UTC','yyyy-MM');
     var fo=bkFolder_();
-    if(fo.getFilesByName(name).hasNext()) return;
-    fo.createFile(name,f.getBlob().getDataAsString(),'application/json');
-    var cutoff=new Date(Date.now()-60*86400000);
+    var body=null;
+    var dname='snap-'+h.slice(0,8)+'-'+day+'.json';
+    if(!fo.getFilesByName(dname).hasNext()){
+      body=f.getBlob().getDataAsString();
+      fo.createFile(dname,body,'application/json');
+    }
+    var mname='keep-'+h.slice(0,8)+'-'+mon+'.json';   // permanent monthly archive
+    if(!fo.getFilesByName(mname).hasNext()){
+      if(body===null) body=f.getBlob().getDataAsString();
+      fo.createFile(mname,body,'application/json');
+    }
+    var cutoff=new Date(Date.now()-60*86400000);       // prune dailies only
     var it=fo.getFiles();
     while(it.hasNext()){var g=it.next();var n=g.getName();
       if(n.indexOf('snap-'+h.slice(0,8)+'-')===0){var d=new Date(n.slice(-15,-5));if(!isNaN(d)&&d<cutoff)g.setTrashed(true);}}
   }catch(e){}
 }
+
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:3});
+  if(p.action==='ping') return json_({ok:true,v:4});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u});
@@ -57,11 +68,12 @@ function doGet(e){
   }
   if(p.action==='snapshots'){
     var fo=bkFolder_(),it=fo.getFiles(),out=[];
-    while(it.hasNext()){var g=it.next();if(g.getName().indexOf('snap-'+a.h.slice(0,8)+'-')===0)out.push(g.getName());}
+    while(it.hasNext()){var g=it.next();var n=g.getName();if(n.indexOf('snap-'+a.h.slice(0,8)+'-')===0||n.indexOf('keep-'+a.h.slice(0,8)+'-')===0)out.push(n);}
     return json_({snapshots:out.sort()});
   }
   if(p.action==='snapshot'){
-    var nm='snap-'+a.h.slice(0,8)+'-'+String(p.day||'')+'.json';
+    var key=String(p.day||''); var pre=(key.length===7?'keep-':'snap-');
+    var nm=pre+a.h.slice(0,8)+'-'+key+'.json';
     var it2=bkFolder_().getFilesByName(nm);
     return it2.hasNext()?json_({data:JSON.parse(it2.next().getBlob().getDataAsString())}):json_({error:'no_snapshot'});
   }
@@ -122,7 +134,7 @@ function doPost(e){
     var ff2=fileFor_(a.h);
     if(ff2.f) ff2.f.setTrashed(true);
     try{var fo=bkFolder_(),it=fo.getFiles();
-      while(it.hasNext()){var g=it.next();if(g.getName().indexOf('snap-'+a.h.slice(0,8)+'-')===0)g.setTrashed(true);}}catch(e3){}
+      while(it.hasNext()){var g=it.next();var n2=g.getName();if(n2.indexOf('snap-'+a.h.slice(0,8)+'-')===0||n2.indexOf('keep-'+a.h.slice(0,8)+'-')===0)g.setTrashed(true);}}catch(e3){}
     props_().deleteProperty('u:'+a.u);
     return json_({deleted:true});
   }

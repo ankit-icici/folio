@@ -470,10 +470,9 @@ function heroHTML(t){
 }
 function cagrHTML(){
   const x=xirr(); if(!x) return "";
-  const since=x.since.toLocaleDateString("en-IN",{month:"short",year:"numeric"});
-  return '<div class="cagr"><span class="hk" style="margin:0">Return since '+esc(since)+'</span>'+
+  return '<div class="cagr"><span class="hk" style="margin:0">CAGR</span>'+
     '<span class="mono '+(x.rate>=0?"gain":"loss")+'" style="font-size:15px;font-weight:600">'+
-    sgn(x.rate)+Math.abs(x.rate).toFixed(1)+'% <small style="font-weight:400;opacity:.65">per year</small></span></div>';
+    sgn(x.rate)+Math.abs(x.rate).toFixed(1)+'%</span></div>';
 }
 const kv=(k,v,r)=>'<div class="kv'+(r?" r":"")+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
 function cardHTML(x,coreInv){

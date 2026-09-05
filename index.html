@@ -285,7 +285,8 @@ function saveRemote(force){
   saveTimer=setTimeout(async()=>{
     try{
       const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
-        body:JSON.stringify({action:"save",force:force===true,data:{stocks,txns,savedAt:new Date().toISOString()}})});
+        body:JSON.stringify({action:"save",force:force===true,
+          data:{stocks,txns,...(meta.history?{history:meta.history}:{}),savedAt:new Date().toISOString()}})});
       const j=await r.json(); pendingSave=!j.saved;
       if(j.error==="suspicious_save"){
         const st=$("#status");
@@ -303,7 +304,8 @@ async function loadRemote(){
     const r=await fetch(api("action=load"));
     const j=await r.json();
     if(j.error){ ready=true; live=false; return false; }
-    if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
+    if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
+      if(j.data.history) meta.history=j.data.history; }
     ready=true; live=true; lastLoadAt=Date.now(); cacheLocal(); return true;
   }catch(e){ ready=true; live=false; return false; }
 }

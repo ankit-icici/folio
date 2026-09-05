@@ -187,7 +187,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .togg.full{display:grid;width:100%}
 .primary{width:100%;margin-top:20px;padding:14px 0;border-radius:999px;background:var(--btn);color:var(--btn-ink);font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
 .primary:disabled{opacity:.45}
-.ghost{width:100%;margin-top:10px;padding:12px 0;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ghost{width:100%;margin-top:10px;padding:12px 0;border-radius:999px;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink)}
+.secthead{margin-top:22px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
 .hint{font-size:12px;color:var(--muted);margin-top:8px}
 .err{font-size:12.5px;color:var(--loss);margin-top:8px;display:none}
 .linky{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid var(--gold-soft)}
@@ -781,41 +782,70 @@ function signOut(){
   sheetOpen=false; $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on");
   mountSetup("in");
 }
+function snapLabel(key,keep){
+  if(keep){
+    const [y,m]=key.split("-");
+    return {t:new Date(+y,+m-1,1).toLocaleString("en-IN",{month:"long"})+" "+y,s:"kept forever"};
+  }
+  const d=new Date(key+"T00:00:00");
+  const days=Math.round((new Date(today()+"T00:00:00")-d)/86400000);
+  const t=days===0?"Today":(days===1?"Yesterday":d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}));
+  return {t,s:days<=1?"":days+" days ago"};
+}
 async function restoreSheet(){
-  openSheet("Restore points","<p class='hint' style='margin-top:4px'>Loading…</p>");
+  openSheet("Earlier versions","<p class='hint' style='margin-top:4px'>Loading…</p>");
   let list=[];
   try{ const j=await fetch(api("action=snapshots")).then(r=>r.json()); list=j.snapshots||[]; }
-  catch(e){ $("#sheetBody").innerHTML="<p class='hint'>Could not reach the server.</p>"; return; }
-  const parse=n=>{const keep=n.indexOf("keep-")===0; const key=n.replace(/^(snap|keep)-[0-9a-f]+-/,"").replace(".json","");
-    return {n,keep,key};};
-  const rows=list.map(parse).sort((a,b)=>a.key<b.key?1:-1);
-  if(!rows.length){ $("#sheetBody").innerHTML="<p class='hint'>No restore points yet — the first one is created the next time your data changes.</p>"; return; }
+  catch(e){ $("#sheetBody").innerHTML="<p class='hint'>Couldn’t reach your data right now. Check your connection and try again.</p>"; return; }
+  const rows=list.map(n=>({keep:n.indexOf("keep-")===0,key:n.replace(/^(snap|keep)-[0-9a-f]+-/,"").replace(".json","")}))
+    .sort((a,b)=>a.key<b.key?1:-1);
+  if(!rows.length){ $("#sheetBody").innerHTML="<p class='hint'>Nothing here yet. A version is saved automatically each day you make a change.</p>"; return; }
   $("#sheetBody").innerHTML=
-    "<p class='hint' style='margin-top:4px'>Every day’s state for the last 60 days, plus one permanent archive per month that is never deleted.</p>"+
-    rows.map(r=>'<div class="trow"><div class="nm">'+esc(r.key)+'</div>'+
-      '<div class="side" style="width:auto;color:var(--faint);font-weight:600">'+(r.keep?"MONTHLY":"DAILY")+'</div>'+
-      '<button class="del" data-key="'+esc(r.key)+'">Restore</button></div>').join("")+
-    '<div class="err" id="rsErr"></div>';
+    "<p class='hint' style='margin-top:4px'>Pick a date to bring your portfolio back to how it looked then. Your current version is saved first, so nothing is lost.</p>"+
+    rows.map(r=>{const l=snapLabel(r.key,r.keep);
+      return '<div class="trow"><div class="nm">'+esc(l.t)+
+        (l.s?' <span style="font-weight:400;color:var(--faint);font-size:11px">· '+esc(l.s)+'</span>':"")+'</div>'+
+        '<button class="del" data-key="'+esc(r.key)+'">Go back to this</button></div>';}).join("")+
+    '<div class="err" id="rsErr"></div>'+
+    '<p class="hint" style="text-align:center;margin-top:16px"><button class="linky" id="rsFile">Use a copy saved on my device instead</button></p>';
+  $("#rsFile").addEventListener("click",importBackupSheet);
   $("#sheetBody").addEventListener("click",async e=>{
     const b=e.target.closest("[data-key]"); if(!b) return;
-    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Confirm?"; return; }
-    b.textContent="…";
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Tap again to confirm"; return; }
+    b.textContent="Restoring…";
     try{
       const j=await fetch(api("action=snapshot&day="+encodeURIComponent(b.dataset.key))).then(r=>r.json());
-      if(j.error||!j.data) return showErr("#rsErr","Could not load that restore point.");
+      if(j.error||!j.data) return showErr("#rsErr","Couldn’t load that version. Try another date.");
       stocks=j.data.stocks||{}; txns=j.data.txns||{};
       saveRemote(true); closeSheet();
-    }catch(e2){ showErr("#rsErr","Could not reach the server."); }
+    }catch(e2){ showErr("#rsErr","Couldn’t reach your data right now."); }
+  });
+}
+function importBackupSheet(){
+  openSheet("Use a saved copy",
+    '<p class="hint" style="margin-top:4px">Open the file you saved earlier, copy everything in it, and paste it below.</p>'+
+    '<div class="f"><label>Paste the file’s contents</label><textarea id="rTxt"></textarea></div>'+
+    '<div class="err" id="rErr"></div>'+
+    '<button class="primary" id="rGo">Replace my portfolio with this</button>');
+  $("#rGo").addEventListener("click",()=>{
+    try{
+      const d=JSON.parse($("#rTxt").value);
+      if(!d.stocks||!d.txns) throw new Error("this doesn’t look like a Folio copy");
+      stocks=d.stocks; txns=d.txns; saveRemote(true); closeSheet();
+    }catch(e){ showErr("#rErr","Couldn’t read that — "+e.message+"."); }
   });
 }
 function cfgSheet(){
   openSheet("Account",
-    '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Your portfolio is private to this username and PIN — anyone with the app link can create their own account.</p>'+
+    '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Everything you change is saved automatically.</p>'+
     '<button class="primary" id="sOut">Sign out</button>'+
-    '<button class="ghost" id="sHist">Restore points</button>'+
-    '<button class="ghost" id="sExp">Export backup (JSON)</button>'+
-    '<button class="ghost" id="sImp">Restore from backup</button>'+
-    '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete account & data</button>'+
+    '<div class="secthead">If something goes wrong</div>'+
+    '<button class="ghost" id="sHist">Go back to an earlier version</button>'+
+    '<p class="hint" style="margin-top:6px">Every day’s version is kept, plus one for every month — forever.</p>'+
+    '<button class="ghost" id="sExp">Save a copy to this device</button>'+
+    '<p class="hint" style="margin-top:6px">Optional. A file you can keep anywhere as your own backup.</p>'+
+    '<div class="secthead">Danger</div>'+
+    '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete my account and data</button>'+
     '<div class="err" id="sErr"></div>');
   $("#sOut").addEventListener("click",signOut);
   $("#sHist").addEventListener("click",restoreSheet);
@@ -830,23 +860,12 @@ function cfgSheet(){
       signOut();
     }catch(e2){ showErr("#sErr","Could not reach the server."); }
   });
-  $("#sExp").addEventListener("click",()=>{
+  $("#sExp").addEventListener("click",e=>{
     const blob=new Blob([JSON.stringify({stocks,txns,exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    a.download="nivesh-backup-"+today()+".json"; a.click(); URL.revokeObjectURL(a.href);
-  });
-  $("#sImp").addEventListener("click",()=>{
-    openSheet("Restore backup",
-      '<div class="f"><label>Paste backup JSON</label><textarea id="rTxt"></textarea></div>'+
-      '<div class="err" id="rErr"></div>'+
-      '<button class="primary" id="rGo">Restore (replaces current data)</button>');
-    $("#rGo").addEventListener("click",()=>{
-      try{
-        const d=JSON.parse($("#rTxt").value);
-        if(!d.stocks||!d.txns) throw new Error("missing stocks/txns");
-        stocks=d.stocks; txns=d.txns; saveRemote(true); closeSheet();
-      }catch(e){ showErr("#rErr","Not a valid backup: "+e.message); }
-    });
+    a.download="folio-"+today()+".json"; a.click(); URL.revokeObjectURL(a.href);
+    e.currentTarget.textContent="Saved to your downloads";
+    setTimeout(()=>{const b=$("#sExp"); if(b) b.textContent="Save a copy to this device";},2500);
   });
 }
 

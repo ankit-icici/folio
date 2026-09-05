@@ -13,3 +13,13 @@ A minimal, installable PWA for tracking a personal Indian stock portfolio — li
 - `sw.js` + `manifest.webmanifest` — installable, offline-capable shell
 
 The app polls quotes every 15 seconds while open.
+
+## Use it for your own portfolio
+
+Anyone can run their own instance — the app is just static files, and each user brings their own backend:
+
+1. Deploy [`relay/Code.gs`](relay/Code.gs) as a web app on your own Google account (instructions at the top of the file, ~5 minutes, free).
+2. Open the app, paste your `/exec` URL and your key, tap Connect.
+3. Add holdings via **+** (single buys or bulk paste import).
+
+Sharing the same URL + key with another person gives them full read/write access to the same portfolio — treat the pair like a password.

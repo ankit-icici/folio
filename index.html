@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nivesh</title>
+<title>Folio</title>
 <meta name="theme-color" content="#0D0D0F">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Nivesh">
+<meta name="apple-mobile-web-app-title" content="Folio">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -153,6 +153,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .plhead span:first-child{text-align:left}
 .plfoot{border-top:1px solid var(--line);margin-top:2px;padding-top:13px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
 .plfoot b{font-weight:600;color:var(--ink)}
+.achip{display:inline-block;font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px}
+.achip.under{background:var(--loss-bg);color:var(--loss)}
+.achip.mid{background:rgba(214,138,38,.13);color:#C07A1B}
+:root[data-theme="dark"] .achip.mid{color:#E8A94E}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .achip.mid{color:#E8A94E}}
+.achip.over{background:var(--gain-bg);color:var(--gain)}
+.rtag{font-style:normal;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:1px 4px;vertical-align:2px}
+.legend{display:flex;gap:14px;justify-content:center;margin-top:14px;font-size:10.5px;color:var(--muted);flex-wrap:wrap}
+.legend i{font-style:normal;margin-right:4px}
 
 .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px}
 .empty b{display:block;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;color:var(--ink);font-size:20px;margin-bottom:6px}
@@ -221,8 +230,13 @@ const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — 
   pin_too_short:"PIN must be at least 4 characters."};
 const errMsg=c=>ERRS[c]||("Error: "+c);
 let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
-let tab="core", flowPeriod="all", openMonth=null;
+let tab="core", flowPeriod="all", openMonth=null, sortBy="inv";
 let targetDraft={}, planMode="add", planAmt="";
+const POOL2="Satellite";
+const PRESET={ "360ONE":{t:6,r:"OW"},ALIVUS:{t:9.5,r:"OW"},BANKBARODA:{t:6,r:"EW"},BHARTIARTL:{t:9,r:"EW"},
+  FIRSTCRY:{t:6,r:"EW"},CMSINFO:{t:6,r:"EW"},EDELWEISS:{t:14,r:"OW"},HDFCBANK:{t:9,r:"OW"},HCG:{t:6,r:"EW"},
+  MSTC:{t:3,r:"UW"},NUVAMA:{t:10,r:"OW"},SAMMAANCAP:{t:9.5,r:"EW"},TRANSRAILL:{t:3,r:"UW"},YATRA:{t:3,r:"UW"},
+  INDIGRID:{t:5,r:"EW",pool:"ipo"} };
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -344,15 +358,14 @@ const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
 /* ---------- render ---------- */
 function shellHTML(){
   return '<div class="wrap">'+
-    '<header><div class="wordmark">Nivesh<span>.</span></div>'+
+    '<header><div class="wordmark">Folio<span>.</span></div>'+
     '<div class="hr"><button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
-    '<button class="tbtn" id="cfgBtn" aria-label="Settings">⚙</button>'+
-    '<button class="hbtn" id="pricesBtn">Prices</button></div></header>'+
+    '<button class="tbtn" id="cfgBtn" aria-label="Account">⚙</button></div></header>'+
     '<div class="status" id="status"></div>'+
     '<section class="hero" id="hero"></section>'+
     '<nav class="seg" role="tablist" id="seg">'+
     '<button role="tab" aria-selected="true" data-tab="core">Core</button>'+
-    '<button role="tab" aria-selected="false" data-tab="ipo">IPO</button>'+
+    '<button role="tab" aria-selected="false" data-tab="ipo">'+POOL2+'</button>'+
     '<button role="tab" aria-selected="false" data-tab="flows">Flows</button>'+
     '<button role="tab" aria-selected="false" data-tab="plan">Plan</button></nav>'+
     '<div id="content"></div></div>'+
@@ -360,7 +373,7 @@ function shellHTML(){
 }
 function setupHTML(mode){
   const isNew=mode==="new";
-  return '<div class="setup"><div class="wordmark">Nivesh<span>.</span></div>'+
+  return '<div class="setup"><div class="wordmark">Folio<span>.</span></div>'+
     '<p>'+(isNew?"Pick a username and a PIN.<br>Your portfolio stays private to them.":"Welcome back.")+'</p>'+
     '<div class="togg full" id="authT" style="margin-bottom:4px">'+
       '<button aria-pressed="'+!isNew+'" data-v="in">Sign in</button>'+
@@ -385,10 +398,14 @@ function render(){
   if(tab==="flows") c.innerHTML=flowsHTML();
   else if(tab==="plan") c.innerHTML=planHTML(core);
   else{
-    const set=tab==="ipo"?ipo:core, coreInv=totals(core).inv;
+    let set=tab==="ipo"?ipo:core; const coreInv=totals(core).inv;
+    if(sortBy==="name") set=[...set].sort((a,b)=>a.s.name.localeCompare(b.s.name));
+    else if(sortBy==="day") set=[...set].sort((a,b)=>b.h.dayPct-a.h.dayPct);
+    const sorter='<div class="chips" style="margin-top:14px">'+[["inv","Value"],["name","A–Z"],["day","Day %"]].map(o=>
+      '<button aria-pressed="'+(sortBy===o[0])+'" data-sort="'+o[0]+'">'+o[1]+'</button>').join("")+"</div>";
     if(!ready) c.innerHTML='<div class="empty">Loading…</div>';
-    else if(!set.length) c.innerHTML='<div class="empty"><b>'+(tab==="ipo"?"No IPO holdings":"No holdings yet")+'</b>Tap + to add or import.</div>';
-    else c.innerHTML='<div class="list">'+set.map(x=>cardHTML(x,coreInv)).join("")+"</div>";
+    else if(!set.length) c.innerHTML='<div class="empty"><b>'+(tab==="ipo"?"No "+POOL2.toLowerCase()+" holdings":"No holdings yet")+'</b>Tap + to add or import.</div>';
+    else c.innerHTML=sorter+'<div class="list" style="margin-top:12px">'+set.map(x=>cardHTML(x,coreInv)).join("")+"</div>";
   }
   bind();
 }
@@ -428,37 +445,46 @@ function cardHTML(x,coreInv){
       kv("Day P&L",'<span class="'+cls(h.day)+'">'+smoney(h.day)+'</span>',1)+
       kv("Avg buy",price(h.avg))+
       kv("Invested",rupee(h.inv))+
-      kv(isCore?"Allocation":"Pool",isCore?alloc:"IPO",1)+
+      kv(isCore?"Allocation":"Pool",isCore?alloc:POOL2,1)+
     '</div>'+
     '<div class="acts">'+
       '<button class="buy" data-act="buy">Buy</button>'+
       '<button class="sell" data-act="sell">Sell</button>'+
-      '<button data-act="hist">History</button>'+
+      '<button data-act="hist">Edit</button>'+
       '<button class="danger" data-act="del">Delete</button>'+
     '</div></div>';
 }
 
 /* ---------- plan ---------- */
+function allocChip(now,t){
+  if(!isFinite(t)||t<=0) return '<span class="achip mono" style="color:var(--faint)">'+now.toFixed(1)+'%</span>';
+  const d=now-t;
+  const c=d<-0.5?"under":(d>0.5?"over":"mid");
+  return '<span class="achip mono '+c+'">'+now.toFixed(1)+'%</span>';
+}
+function planRowAct(x,t,T2){
+  if(!isFinite(t)||t<=0) return '<span style="color:var(--faint)">—</span>';
+  const d=t/100*T2-x.h.inv;
+  if(Math.abs(d)<Math.max(1,T2*0.005)) return '<span style="color:var(--muted)">On target</span>';
+  const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
+  return '<b>'+(d>0?"Add ":"Trim ")+rupee(d)+'</b>'+(sh?' <span style="color:var(--muted)">'+sh+' sh</span>':"");
+}
 function planHTML(core){
   if(!core.length) return '<div class="empty"><b>Nothing to plan</b>Add core holdings first.</div>';
   const coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
   const T2=coreInv+cash;
   let sumT=0, sumDelta=0, rows="";
-  for(const x of core){
+  const list=[...core].sort((a,b)=>a.s.name.localeCompare(b.s.name));
+  for(const x of list){
     const t=targetDraft[x.id]!==undefined?parseFloat(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:NaN);
     const now=coreInv>0?x.h.inv/coreInv*100:0;
-    let act='<span style="color:var(--faint)">—</span>';
-    if(isFinite(t)&&t>0){ sumT+=t;
-      const d=t/100*T2-x.h.inv; sumDelta+=d;
-      const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
-      act=Math.abs(d)<1?'<span style="color:var(--muted)">On target</span>':
-        '<span class="'+(d>0?"gain":"loss")+'">'+(d>0?"Add ":"Take ")+rupee(d)+(sh?" · "+sh+" sh":"")+'</span>';
-    }
-    rows+='<div class="prl" data-id="'+x.id+'"><div class="n">'+esc(x.s.name)+'</div>'+
-      '<div class="now mono">'+now.toFixed(1)+'%</div>'+
+    if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-x.h.inv; }
+    rows+='<div class="prl" data-id="'+x.id+'"><div class="n">'+esc(x.s.name)+
+      (x.s.rating?' <em class="rtag">'+esc(x.s.rating)+'</em>':"")+'</div>'+
+      '<div class="now" data-role="now">'+allocChip(now,t)+'</div>'+
       '<input inputmode="decimal" placeholder="%" value="'+(targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:""))+'" data-plan-t>'+
-      '<div class="act mono" data-role="act">'+act+'</div></div>';
+      '<div class="act mono" data-role="act">'+planRowAct(x,t,T2)+'</div></div>';
   }
   return '<div class="plan">'+
     '<h3>Rebalance</h3><div class="sub">Core invested <span class="mono">'+rupee(coreInv)+'</span> → new total <span class="mono" data-role="t2">'+rupee(T2)+'</span></div>'+
@@ -470,7 +496,17 @@ function planHTML(core){
     rows+
     '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(cash-sumDelta)+'</b></span></div>'+
-    '</div><p class="hint" style="padding:0 4px">Targets are % of the new core total, computed together at portfolio level. “Unallocated” is cash your targets don’t yet place; stocks without a target keep their current amount.</p>';
+    '<div class="legend"><span><i class="achip under" style="padding:2px 7px">·</i> under-allocated</span><span><i class="achip mid" style="padding:2px 7px">·</i> near target</span><span><i class="achip over" style="padding:2px 7px">·</i> over-allocated</span></div>'+
+    '</div>'+
+    '<div style="text-align:center;margin-top:12px"><button class="linky" id="presetBtn">Load proposed allocations (Sep 2026 sheet)</button></div>'+
+    '<p class="hint" style="padding:0 4px">Targets are % of the new core total, computed together at portfolio level. “Now” compares actual vs target allocation; the action column tells you what to add or trim per stock. “Unallocated” is cash your targets don’t yet place.</p>';
+}
+function applyPreset(){
+  for(const s of Object.values(stocks)){
+    const p=s.symbol&&PRESET[s.symbol]; if(!p) continue;
+    s.target=p.t; s.rating=p.r; if(p.pool) s.pool=p.pool;
+  }
+  targetDraft={}; saveRemote(); render();
 }
 
 /* ---------- flows ---------- */
@@ -523,6 +559,8 @@ function bind(){
       else if(a==="del") delStock(id,b);
     });
   });
+  document.querySelectorAll("[data-sort]").forEach(b=>
+    b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
   document.querySelectorAll("[data-period]").forEach(b=>
     b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
   document.querySelectorAll("[data-month]").forEach(b=>
@@ -535,6 +573,8 @@ function bindPlan(){
     planMode=b.dataset.v; render();});
   const pc=$("#planCash");
   if(pc) pc.addEventListener("input",()=>{planAmt=pc.value; refreshPlan();});
+  const pb=$("#presetBtn");
+  if(pb) pb.addEventListener("click",applyPreset);
   document.querySelectorAll("[data-plan-t]").forEach(inp=>{
     const id=inp.closest(".prl").dataset.id;
     inp.addEventListener("input",()=>{targetDraft[id]=inp.value; refreshPlan();});
@@ -550,14 +590,10 @@ function refreshPlan(){
   document.querySelectorAll(".prl").forEach(row=>{
     const id=row.dataset.id, x=core.find(c=>c.id===id); if(!x) return;
     const t=parseFloat(row.querySelector("[data-plan-t]").value);
-    let act='<span style="color:var(--faint)">—</span>';
-    if(isFinite(t)&&t>0){ sumT+=t;
-      const d=t/100*T2-x.h.inv; sumDelta+=d;
-      const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
-      act=Math.abs(d)<1?'<span style="color:var(--muted)">On target</span>':
-        '<span class="'+(d>0?"gain":"loss")+'">'+(d>0?"Add ":"Take ")+rupee(d)+(sh?" · "+sh+" sh":"")+'</span>';
-    }
-    row.querySelector('[data-role="act"]').innerHTML=act;
+    const now=coreInv>0?x.h.inv/coreInv*100:0;
+    if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-x.h.inv; }
+    row.querySelector('[data-role="now"]').innerHTML=allocChip(now,t);
+    row.querySelector('[data-role="act"]').innerHTML=planRowAct(x,t,T2);
   });
   const t2=document.querySelector('[data-role="t2"]'); if(t2) t2.textContent=rupee(T2);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
@@ -580,7 +616,7 @@ function showErr(sel,msg){ const el=$(sel); el.textContent=msg; el.style.display
 /* add stock */
 function addSheet(){
   openSheet("Add stock",
-    '<div class="togg full" id="poolT"><button aria-pressed="true" data-v="core">Core</button><button aria-pressed="false" data-v="ipo">IPO / short term</button></div>'+
+    '<div class="togg full" id="poolT"><button aria-pressed="true" data-v="core">Core</button><button aria-pressed="false" data-v="ipo">'+POOL2+'</button></div>'+
     '<div class="f"><label>Name</label><input id="fName" placeholder="e.g. HDFC Bank" autocomplete="off"></div>'+
     '<div class="f2"><div class="f"><label>NSE symbol</label><input id="fSym" class="mono" placeholder="HDFCBANK" autocapitalize="characters" autocomplete="off"></div>'+
     '<div class="f"><label>Date</label><input id="fDate" type="date" value="'+today()+'"></div></div>'+
@@ -609,7 +645,7 @@ function importSheet(){
   openSheet("Import holdings",
     '<p class="hint" style="margin-top:4px">Paste rows — one buy per line, comma or tab separated:<br><span class="mono">Name, Date, Qty, Price</span> · date optional.</p>'+
     '<div class="f"><textarea id="impTxt" placeholder="HDFC Bank, 2025-04-15, 30, 1520&#10;TCS, 12-06-2025, 8, 3890"></textarea></div>'+
-    '<div class="togg full" id="impPool"><button aria-pressed="true" data-v="core">Into Core</button><button aria-pressed="false" data-v="ipo">Into IPO</button></div>'+
+    '<div class="togg full" id="impPool"><button aria-pressed="true" data-v="core">Into Core</button><button aria-pressed="false" data-v="ipo">Into '+POOL2+'</button></div>'+
     '<div class="hint" id="impPrev"></div><div class="err" id="impErr"></div>'+
     '<button class="primary" id="impGo" disabled>Import</button>');
   let pool="core", parsed=[];
@@ -700,11 +736,20 @@ function txnSheet(id,side){
   });
 }
 
-/* history */
+/* edit stock: symbol, pool, manual prices, history */
 function histSheet(id){
   const s=stocks[id];
   const rows=stockTxns(id).reverse();
-  openSheet(s.name+" · history",
+  openSheet("Edit · "+s.name,
+    '<div class="togg full" id="ePool"><button aria-pressed="'+(s.pool!=="ipo")+'" data-v="core">Core</button>'+
+      '<button aria-pressed="'+(s.pool==="ipo")+'" data-v="ipo">'+POOL2+'</button></div>'+
+    '<p class="hint" style="margin-top:6px">'+POOL2+' holdings count in the dashboard but stay out of allocation and the rebalance plan.</p>'+
+    '<div class="f"><label>NSE symbol (for live prices)</label><input id="eSym" class="mono" autocapitalize="characters" value="'+esc(s.symbol||"")+'" placeholder="e.g. HDFCBANK"></div>'+
+    '<div class="f2"><div class="f"><label>Price (manual)</label><input id="ePr" class="mono" inputmode="decimal" value="'+(s.price||"")+'"></div>'+
+    '<div class="f"><label>Prev close</label><input id="ePc" class="mono" inputmode="decimal" value="'+(s.prevClose||"")+'"></div></div>'+
+    '<button class="primary" id="eGo">Save</button>'+
+    '<p class="hint">Manual prices matter only when there is no symbol — live quotes overwrite them.</p>'+
+    '<div class="plhead" style="grid-template-columns:1fr"><span style="text-align:left">History</span></div>'+
     (rows.length?rows.map(t=>
       '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
       '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
@@ -712,34 +757,22 @@ function histSheet(id){
       '<button class="del" data-tid="'+t.id+'">Remove</button></div>').join("")
     :'<p class="hint">No transactions.</p>')+
     '<p class="hint">Remove a row to correct a mistake. ₹0 lots are bonus/split shares.</p>');
+  let pool=s.pool==="ipo"?"ipo":"core";
+  $("#ePool").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;pool=b.dataset.v;
+    $("#ePool").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
+  $("#eGo").addEventListener("click",()=>{
+    s.pool=pool;
+    s.symbol=$("#eSym").value.trim().toUpperCase()||null;
+    const pr=parseFloat($("#ePr").value), pc=parseFloat($("#ePc").value);
+    if(isFinite(pr)&&pr>0) s.price=pr;
+    if(isFinite(pc)&&pc>0) s.prevClose=pc;
+    saveRemote(); closeSheet(); pollQuotes();
+  });
   $("#sheetBody").addEventListener("click",e=>{
     const b=e.target.closest(".del"); if(!b) return;
     if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Sure?"; return; }
     delete txns[b.dataset.tid]; saveRemote();
     b.closest(".trow").remove();
-  });
-}
-
-/* prices */
-function pricesSheet(){
-  const list=all(); if(!list.length) return;
-  openSheet("Prices & symbols",
-    '<div class="phead"><span>Stock / symbol</span><span>Current</span><span>Prev close</span></div>'+
-    list.map(x=>'<div class="prow" data-id="'+x.id+'"><div class="n">'+esc(x.s.name)+
-      '<input data-f2="symbol" placeholder="NSE symbol" autocapitalize="characters" value="'+esc(x.s.symbol||"")+'"></div>'+
-      '<input class="pv" inputmode="decimal" data-f="price" value="'+(x.s.price||"")+'">'+
-      '<input class="pv" inputmode="decimal" data-f="prevClose" value="'+(x.s.prevClose||"")+'"></div>').join("")+
-    '<button class="primary" id="pGo">Save</button>'+
-    '<p class="hint">Prices refresh live every 15s for stocks with a symbol; manual values here are for stocks without one.</p>');
-  $("#pGo").addEventListener("click",()=>{
-    for(const row of document.querySelectorAll(".prow")){
-      const id=row.dataset.id, s=stocks[id]; if(!s) continue;
-      row.querySelectorAll("input[data-f]").forEach(i=>{const v=parseFloat(i.value); if(isFinite(v)&&v>0) s[i.dataset.f]=v;});
-      const sy=row.querySelector("input[data-f2]");
-      s.symbol=sy.value.trim().toUpperCase()||null;
-    }
-    meta.updatedAt=new Date().toISOString();
-    saveRemote(); closeSheet(); pollQuotes();
   });
 }
 
@@ -801,7 +834,6 @@ function mountShell(){
   applyTheme();
   $("#themeBtn").addEventListener("click",cycleTheme);
   $("#cfgBtn").addEventListener("click",cfgSheet);
-  $("#pricesBtn").addEventListener("click",pricesSheet);
   $("#fab").addEventListener("click",addSheet);
   $("#seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setTab(b.dataset.tab);});
 }

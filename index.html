@@ -222,7 +222,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 <script>
 "use strict";
 /* ---------- config & state ---------- */
-const BACKEND="https://script.google.com/macros/s/AKfycbzobVO5l1czLdkX4tH3k2HxG_ZIJX8CVbEUU5yDeM9AqHNXUN6oGD7MP_UqzLYJaHM9xw/exec";
+const BACKEND="https://script.google.com/macros/s/AKfycbxY7jM6dM040MH4j8X5KIVEwJdslET3iPjO9IVPsoRc_sU4wm3qtc1QDz4mvZa7ZFo4eg/exec";
 let AUTH=null; try{AUTH=JSON.parse(localStorage.getItem("nivesh_auth")||"null");}catch(e){}
 const api=q=>BACKEND+"?u="+encodeURIComponent(AUTH.u)+"&p="+encodeURIComponent(AUTH.p)+(q?"&"+q:"");
 const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — try again in a few minutes.",
@@ -275,19 +275,25 @@ function cycleTheme(){
 
 /* ---------- persistence ---------- */
 function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta}));}catch(e){} }
-function saveRemote(){
+function saveRemote(force){
   if(!AUTH) return;
   cacheLocal();
   clearTimeout(saveTimer); pendingSave=true; renderHeroOnly();
   saveTimer=setTimeout(async()=>{
     try{
       const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
-        body:JSON.stringify({action:"save",data:{stocks,txns,savedAt:new Date().toISOString()}})});
+        body:JSON.stringify({action:"save",force:force===true,data:{stocks,txns,savedAt:new Date().toISOString()}})});
       const j=await r.json(); pendingSave=!j.saved;
+      if(j.error==="suspicious_save"){
+        const st=$("#status");
+        if(st){ st.style.display="block";
+          st.textContent="Save blocked: this would have replaced "+j.oldTx+" records with "+j.inTx+". Your server data is untouched — reload the app."; }
+      }
     }catch(e){ pendingSave=true; }
     renderHeroOnly();
   },1200);
 }
+let lastLoadAt=0;
 async function loadRemote(){
   if(!AUTH) return false;
   try{
@@ -295,7 +301,7 @@ async function loadRemote(){
     const j=await r.json();
     if(j.error){ ready=true; live=false; return false; }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
-    ready=true; live=true; cacheLocal(); return true;
+    ready=true; live=true; lastLoadAt=Date.now(); cacheLocal(); return true;
   }catch(e){ ready=true; live=false; return false; }
 }
 
@@ -318,7 +324,12 @@ async function pollQuotes(){
   }catch(e){ live=false; renderHeroOnly(); }
 }
 setInterval(pollQuotes,15000);
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden) pollQuotes(); });
+document.addEventListener("visibilitychange",async()=>{
+  if(document.hidden) return;
+  /* re-sync after being backgrounded so a stale tab never overwrites newer data */
+  if(AUTH&&!sheetOpen&&Date.now()-lastLoadAt>120000){ await loadRemote(); safeRender(); }
+  pollQuotes();
+});
 
 /* ---------- FIFO computations ---------- */
 function stockTxns(sid){
@@ -804,7 +815,7 @@ function cfgSheet(){
       try{
         const d=JSON.parse($("#rTxt").value);
         if(!d.stocks||!d.txns) throw new Error("missing stocks/txns");
-        stocks=d.stocks; txns=d.txns; saveRemote(); closeSheet();
+        stocks=d.stocks; txns=d.txns; saveRemote(true); closeSheet();
       }catch(e){ showErr("#rErr","Not a valid backup: "+e.message); }
     });
   });

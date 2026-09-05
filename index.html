@@ -365,11 +365,14 @@ function totals(list){
 const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
   .sort((a,b)=>b.h.cur-a.h.cur||a.s.name.localeCompare(b.s.name));
 
-/* lifetime money-weighted return (XIRR): every buy is cash out, every sell cash in,
-   today's market value is the closing inflow. */
+/* Money-weighted return (XIRR): every buy is cash out, every sell cash in, today's
+   market value is the closing inflow. Imported flow-only records (noLot) are skipped:
+   their matching purchases aren't in the data, so counting their proceeds alone would
+   overstate the return. */
 function xirr(){
   const flows=[];
   for(const t of Object.values(txns)){
+    if(t.noLot) continue;
     const amt=t.qty*t.price;
     if(!(amt>0)||!t.date) continue;
     flows.push({d:new Date(t.date+"T00:00:00"),v:t.side==="buy"?-amt:amt});

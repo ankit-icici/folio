@@ -332,6 +332,7 @@ function stockTxns(sid){
 function holding(sid){
   const lots=[];
   for(const t of stockTxns(sid)){
+    if(t.noLot) continue; /* flow-only record: already reflected in imported lots */
     if(t.side==="buy") lots.push({q:t.qty,p:t.price});
     else{ let r=t.qty;
       while(r>0&&lots.length){ const l=lots[0],take=Math.min(l.q,r); l.q-=take; r-=take; if(l.q<=1e-9)lots.shift(); } }
@@ -351,7 +352,7 @@ function totals(list){
   t.dayPct=t.prevVal>0?t.day/t.prevVal*100:0;
   return t;
 }
-const all=()=>Object.keys(stocks).map(id=>({id,s:stocks[id],h:holding(id)}))
+const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
   .sort((a,b)=>b.h.inv-a.h.inv||a.s.name.localeCompare(b.s.name));
 const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
 

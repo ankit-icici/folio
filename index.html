@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nivesh</title>
+<meta name="theme-color" content="#0D0D0F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nivesh">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F7F6F2; --surface:#FFFFFF; --surface2:#FBFAF7;
+  --ink:#1C1B18; --muted:#75726A; --faint:#A6A29A;
+  --line:#E7E4DC; --line2:#EFEDE6;
+  --gold:#8A6D3B; --gold-soft:rgba(138,109,59,.10);
+  --btn:#1C1B18; --btn-ink:#F7F6F2;
+  --gain:#177E52; --loss:#C4423D;
+  --gain-bg:rgba(23,126,82,.08); --loss-bg:rgba(196,66,61,.08);
+  --sheet-shadow:0 -16px 48px rgba(28,27,24,.16);
+  --card-shadow:0 1px 3px rgba(28,27,24,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D0D0F; --surface:#16161A; --surface2:#1C1C21;
+    --ink:#ECEAE4; --muted:#928F86; --faint:#5F5D57;
+    --line:#26262B; --line2:#202024;
+    --gold:#D4B274; --gold-soft:rgba(212,178,116,.12);
+    --btn:#ECEAE4; --btn-ink:#141416;
+    --gain:#46C08A; --loss:#E77B72;
+    --gain-bg:rgba(70,192,138,.10); --loss-bg:rgba(231,123,114,.10);
+    --sheet-shadow:0 -16px 48px rgba(0,0,0,.6);
+    --card-shadow:0 1px 3px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D0D0F; --surface:#16161A; --surface2:#1C1C21;
+  --ink:#ECEAE4; --muted:#928F86; --faint:#5F5D57;
+  --line:#26262B; --line2:#202024;
+  --gold:#D4B274; --gold-soft:rgba(212,178,116,.12);
+  --btn:#ECEAE4; --btn-ink:#141416;
+  --gain:#46C08A; --loss:#E77B72;
+  --gain-bg:rgba(70,192,138,.10); --loss-bg:rgba(231,123,114,.10);
+  --sheet-shadow:0 -16px 48px rgba(0,0,0,.6);
+  --card-shadow:0 1px 3px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--ink); margin:0;
+  font-family:"Schibsted Grotesk",system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"Spline Sans Mono",ui-monospace,SFMono-Regular,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:560px;margin:0 auto;padding:0 18px calc(100px + env(safe-area-inset-bottom))}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
+input,select,textarea{font:inherit;color:var(--ink)}
+.gain{color:var(--gain)} .loss{color:var(--loss)}
+.lbl{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:calc(22px + env(safe-area-inset-top)) 0 2px}
+.wordmark{font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;font-size:25px;letter-spacing:.01em}
+.wordmark span{color:var(--gold);font-style:normal}
+.hr{display:flex;align-items:center;gap:10px}
+.hbtn{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);padding:8px 2px;border-bottom:1px solid var(--gold)}
+.tbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:14px;line-height:1;color:var(--muted)}
+
+.hero{padding:20px 0 20px;border-bottom:1px solid var(--line)}
+.hero .big{font-size:42px;font-weight:600;letter-spacing:-.02em;margin:4px 0 14px;line-height:1.05}
+.stats{display:flex;gap:22px;flex-wrap:wrap}
+.stat .v{font-size:14.5px;font-weight:500}
+.stat .lbl{margin-top:2px}
+.hero .sub{margin-top:14px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.hero .sub b{color:var(--ink);font-weight:500}
+.live{display:inline-flex;align-items:center;gap:5px}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--gain);display:inline-block}
+.live.off i{background:var(--faint)}
+.glbar{margin-top:9px;height:3px;border-radius:2px;overflow:hidden;display:flex;background:var(--line2)}
+.glbar i{height:100%}
+.glbar .g{background:var(--gain)} .glbar .l{background:var(--loss)}
+
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
+.seg button{padding:9px 0;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg button[aria-selected="true"]{background:var(--btn);color:var(--btn-ink)}
+
+.list{margin-top:16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--card-shadow);overflow:hidden}
+.chead{display:flex;align-items:baseline;gap:8px;padding:15px 18px 0}
+.chead .t{font-weight:600;font-size:15.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chead .sym{font-size:10.5px;color:var(--faint);letter-spacing:.04em}
+.chead .sp{flex:1}
+.dpill{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px}
+.dpill.g{background:var(--gain-bg);color:var(--gain)}
+.dpill.l{background:var(--loss-bg);color:var(--loss)}
+.g9{display:grid;grid-template-columns:1.05fr 1fr 1.15fr;gap:12px 12px;padding:13px 18px 15px}
+.kv .k{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-top:2px}
+.kv .v{font-size:13.5px}
+.kv .v small{font-size:11px;color:var(--muted)}
+.g9 .r{text-align:right}
+.acts{display:flex;border-top:1px solid var(--line2)}
+.acts button{flex:1;padding:11px 0;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-left:1px solid var(--line2)}
+.acts button:first-child{border-left:0}
+.acts .buy{color:var(--gold)} .acts .sell{color:var(--loss)}
+.acts .danger[data-armed="1"]{color:var(--loss)}
+
+.chips{display:flex;gap:6px;margin-top:16px}
+.chips button{padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--btn);border-color:var(--btn);color:var(--btn-ink)}
+.flows{margin-top:12px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--card-shadow);overflow:hidden}
+.frow{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid var(--line2)}
+.frow:first-child{border-top:0}
+.frow .m{width:84px;font-size:13px;font-weight:600}
+.frow .bar{flex:1;height:4px;border-radius:2px;background:var(--line2);overflow:hidden;position:relative}
+.frow .bar i{position:absolute;top:0;bottom:0;border-radius:2px}
+.frow .bar i.in{background:var(--gold)}
+.frow .bar i.out{background:var(--loss)}
+.frow .a{width:104px;text-align:right;font-size:13px;font-weight:500}
+.mdet{border-top:1px solid var(--line2);background:var(--surface2);padding:4px 18px 8px}
+.trow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line2)}
+.trow:first-child{border-top:0}
+.trow .d8{font-size:11px;color:var(--muted);width:78px}
+.trow .nm{flex:1;font-size:12.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .side{font-size:9.5px;font-weight:700;letter-spacing:.08em;width:36px}
+.trow .q{font-size:12px;text-align:right;color:var(--muted)}
+.trow .amt{font-size:12.5px;text-align:right;width:92px}
+.trow .del{color:var(--faint);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:4px}
+
+.plan{margin-top:16px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--card-shadow);padding:18px}
+.plan h3{margin:0 0 3px;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;font-size:19px}
+.plan .sub{font-size:12px;color:var(--muted)}
+.cashrow{display:grid;grid-template-columns:auto 1fr;gap:8px;margin-top:14px;align-items:center}
+.togg{display:inline-grid;grid-template-columns:1fr 1fr;gap:3px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;padding:3px}
+.togg button{padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.togg button[aria-pressed="true"]{background:var(--btn);color:var(--btn-ink)}
+.togg.sell button[aria-pressed="true"]{background:var(--loss);color:#fff}
+.cashrow input{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-family:"Spline Sans Mono",monospace;font-size:14px;text-align:right}
+.prl{display:grid;grid-template-columns:1fr 64px 58px 1fr;gap:8px;align-items:center;padding:11px 0;border-top:1px solid var(--line2)}
+.prl .n{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prl .now{font-size:12px;color:var(--muted);text-align:right}
+.prl input{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:7px 6px;font-family:"Spline Sans Mono",monospace;font-size:13px;text-align:right}
+.prl .act{font-size:12px;text-align:right}
+.plhead{display:grid;grid-template-columns:1fr 64px 58px 1fr;gap:8px;padding:16px 0 6px}
+.plhead span{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:right}
+.plhead span:first-child{text-align:left}
+.plfoot{border-top:1px solid var(--line);margin-top:2px;padding-top:13px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
+.plfoot b{font-weight:600;color:var(--ink)}
+
+.empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px}
+.empty b{display:block;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;color:var(--ink);font-size:20px;margin-bottom:6px}
+.status{margin:10px 0 0;padding:10px 14px;border-radius:12px;background:var(--gold-soft);color:var(--gold);font-size:13px;font-weight:500;display:none}
+
+.fab{position:fixed;right:calc(50% - 262px);bottom:calc(22px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--btn);color:var(--btn-ink);font-size:24px;line-height:56px;text-align:center;box-shadow:0 10px 28px rgba(28,27,24,.3);z-index:6}
+@media (max-width:600px){.fab{right:20px}}
+
+.scrim{position:fixed;inset:0;background:rgba(15,14,12,.5);z-index:20;opacity:0;pointer-events:none;transition:opacity .18s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--surface);border-radius:22px 22px 0 0;box-shadow:var(--sheet-shadow);max-width:560px;margin:0 auto;transform:translateY(105%);transition:transform .22s cubic-bezier(.3,.8,.3,1);max-height:88vh;display:flex;flex-direction:column}
+.sheet.on{transform:translateY(0)}
+.sheet .sh{padding:18px 22px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sheet .sh h2{margin:0;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;font-size:21px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet .sh .x{color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:4px}
+.sheet .sb{padding:4px 22px calc(22px + env(safe-area-inset-bottom));overflow-y:auto}
+.f{margin-top:13px}
+.f label{display:block;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+.f input,.f select,.f textarea{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;font-size:15px}
+.f textarea{font-family:"Spline Sans Mono",monospace;font-size:12px;min-height:120px}
+.f input.mono{font-family:"Spline Sans Mono",monospace}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.togg.full{display:grid;width:100%}
+.primary{width:100%;margin-top:20px;padding:14px 0;border-radius:999px;background:var(--btn);color:var(--btn-ink);font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.primary:disabled{opacity:.45}
+.ghost{width:100%;margin-top:10px;padding:12px 0;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin-top:8px}
+.err{font-size:12.5px;color:var(--loss);margin-top:8px;display:none}
+.linky{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid var(--gold-soft)}
+
+.prow{display:grid;grid-template-columns:1fr 88px 88px;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line2)}
+.prow:first-of-type{border-top:0}
+.prow .n{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .n input{width:100%;background:none;border:0;padding:1px 0;font-family:"Spline Sans Mono",monospace;font-size:10.5px;color:var(--faint);letter-spacing:.05em}
+.prow input.pv{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 8px;font-family:"Spline Sans Mono",monospace;font-size:13px;text-align:right}
+.phead{display:grid;grid-template-columns:1fr 88px 88px;gap:8px;padding:6px 0 4px}
+.phead span{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);text-align:right}
+.phead span:first-child{text-align:left}
+
+/* setup */
+.setup{max-width:400px;margin:0 auto;padding:min(18vh,140px) 22px 40px;text-align:center}
+.setup .wordmark{font-size:34px}
+.setup p{color:var(--muted);font-size:13.5px;margin:10px 0 26px}
+.setup .f{text-align:left}
+@media (prefers-reduced-motion: reduce){.sheet,.scrim{transition:none}}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="sh"><h2 id="sheetTitle"></h2><button class="x" id="sheetClose">Close</button></div>
+  <div class="sb" id="sheetBody"></div>
+</div>
+
+<script>
+"use strict";
+/* ---------- config & state ---------- */
+let CFG=null; try{CFG=JSON.parse(localStorage.getItem("nivesh_cfg")||"null");}catch(e){}
+let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
+let tab="core", flowPeriod="all", openMonth=null;
+let targetDraft={}, planMode="add", planAmt="";
+let saveTimer=null, pendingSave=false;
+
+/* ---------- utils ---------- */
+const $=s=>document.querySelector(s);
+const inr0=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0});
+const inr2=new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const rupee=n=>"₹"+inr0.format(Math.round(Math.abs(n)));
+const price=n=>"₹"+(Number.isInteger(n)?inr0.format(n):inr2.format(n));
+const sgn=n=>n>0?"+":(n<0?"−":"");
+const smoney=n=>sgn(n)+rupee(n);
+const spct=n=>isFinite(n)?sgn(n)+Math.abs(n).toFixed(1)+"%":"—";
+const cls=n=>n>0?"gain":(n<0?"loss":"");
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>crypto.randomUUID().replace(/-/g,"").slice(0,20);
+const today=()=>new Date().toISOString().slice(0,10);
+const monthName=m=>{const[y,mo]=m.split("-");return new Date(+y,+mo-1,1).toLocaleString("en-IN",{month:"short"})+" "+y;};
+function ago(iso){
+  const d=new Date(iso); if(isNaN(d)) return "";
+  const s=Math.round((Date.now()-d)/1000);
+  if(s<50) return s+"s ago";
+  const m=Math.round(s/60);
+  if(m<60) return m+"m ago";
+  if(m<48*60) return Math.round(m/60)+"h ago";
+  return d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+}
+
+/* ---------- theme ---------- */
+function applyTheme(){
+  let t=null; try{t=localStorage.getItem("nivesh_theme");}catch(e){}
+  if(t==="light"||t==="dark") document.documentElement.dataset.theme=t;
+  else delete document.documentElement.dataset.theme;
+  const b=$("#themeBtn"); if(b){b.textContent=t==="light"?"☀":(t==="dark"?"☾":"◐");b.title=t?("Theme: "+t):"Theme: auto";}
+}
+function cycleTheme(){
+  let t=null; try{t=localStorage.getItem("nivesh_theme");}catch(e){}
+  const next=t==="light"?"dark":(t==="dark"?null:"light");
+  try{ next?localStorage.setItem("nivesh_theme",next):localStorage.removeItem("nivesh_theme"); }catch(e){}
+  applyTheme();
+}
+
+/* ---------- persistence ---------- */
+function cacheLocal(){ try{localStorage.setItem("nivesh_cache",JSON.stringify({stocks,txns,meta}));}catch(e){} }
+function saveRemote(){
+  cacheLocal();
+  if(!CFG) return;
+  clearTimeout(saveTimer); pendingSave=true; renderHeroOnly();
+  saveTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key),{method:"POST",headers:{"Content-Type":"text/plain"},
+        body:JSON.stringify({action:"save",data:{stocks,txns,savedAt:new Date().toISOString()}})});
+      const j=await r.json(); pendingSave=!j.saved;
+    }catch(e){ pendingSave=true; }
+    renderHeroOnly();
+  },1200);
+}
+async function loadRemote(){
+  if(!CFG) return false;
+  try{
+    const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key)+"&action=load");
+    const j=await r.json();
+    if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
+    ready=true; live=true; cacheLocal(); return true;
+  }catch(e){ ready=true; live=false; return false; }
+}
+
+/* ---------- live quotes ---------- */
+async function pollQuotes(){
+  if(!CFG||document.hidden) return;
+  const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
+  if(!syms.length) return;
+  try{
+    const r=await fetch(CFG.url+"?k="+encodeURIComponent(CFG.key)+"&action=quotes&symbols="+syms.join(","));
+    const j=await r.json();
+    if(j.quotes){
+      for(const s of Object.values(stocks)){
+        const q=j.quotes[s.symbol];
+        if(q&&q.p>0&&q.p<s.price*25&&q.p>s.price/25||q&&q.p>0&&!s.price){ s.price=q.p; s.prevClose=q.pc||q.p; }
+      }
+      meta.updatedAt=j.t||new Date().toISOString(); live=true; cacheLocal();
+      safeRender();
+    }
+  }catch(e){ live=false; renderHeroOnly(); }
+}
+setInterval(pollQuotes,15000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) pollQuotes(); });
+
+/* ---------- FIFO computations ---------- */
+function stockTxns(sid){
+  return Object.entries(txns).filter(([,t])=>t.stockId===sid).map(([id,t])=>({id,...t}))
+    .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.seq||0)-(b.seq||0));
+}
+function holding(sid){
+  const lots=[];
+  for(const t of stockTxns(sid)){
+    if(t.side==="buy") lots.push({q:t.qty,p:t.price});
+    else{ let r=t.qty;
+      while(r>0&&lots.length){ const l=lots[0],take=Math.min(l.q,r); l.q-=take; r-=take; if(l.q<=1e-9)lots.shift(); } }
+  }
+  let qty=0,inv=0; for(const l of lots){qty+=l.q;inv+=l.q*l.p;}
+  const s=stocks[sid]||{}, cp=s.price||0, pc=s.prevClose||cp;
+  const cur=qty*cp, pl=cur-inv, day=qty*(cp-pc);
+  return {qty,inv,avg:qty>0?inv/qty:0,cur,pl,
+    plPct:inv>0?pl/inv*100:0,day,dayPct:(qty>0&&pc>0)?(cp-pc)/pc*100:0,lots};
+}
+function totals(list){
+  const t={inv:0,cur:0,day:0,prevVal:0,up:0,down:0};
+  for(const x of list){ t.inv+=x.h.inv; t.cur+=x.h.cur; t.day+=x.h.day;
+    t.prevVal+=x.h.qty*((x.s.prevClose)||x.s.price||0);
+    if(x.h.qty>0){ if(x.h.day>0)t.up++; else if(x.h.day<0)t.down++; } }
+  t.pl=t.cur-t.inv; t.plPct=t.inv>0?t.pl/t.inv*100:0;
+  t.dayPct=t.prevVal>0?t.day/t.prevVal*100:0;
+  return t;
+}
+const all=()=>Object.keys(stocks).map(id=>({id,s:stocks[id],h:holding(id)}))
+  .sort((a,b)=>b.h.inv-a.h.inv||a.s.name.localeCompare(b.s.name));
+const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
+
+/* ---------- render ---------- */
+function shellHTML(){
+  return '<div class="wrap">'+
+    '<header><div class="wordmark">Nivesh<span>.</span></div>'+
+    '<div class="hr"><button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
+    '<button class="tbtn" id="cfgBtn" aria-label="Settings">⚙</button>'+
+    '<button class="hbtn" id="pricesBtn">Prices</button></div></header>'+
+    '<div class="status" id="status"></div>'+
+    '<section class="hero" id="hero"></section>'+
+    '<nav class="seg" role="tablist" id="seg">'+
+    '<button role="tab" aria-selected="true" data-tab="core">Core</button>'+
+    '<button role="tab" aria-selected="false" data-tab="ipo">IPO</button>'+
+    '<button role="tab" aria-selected="false" data-tab="flows">Flows</button>'+
+    '<button role="tab" aria-selected="false" data-tab="plan">Plan</button></nav>'+
+    '<div id="content"></div></div>'+
+    '<button class="fab" id="fab" aria-label="Add stock">+</button>';
+}
+function setupHTML(msg){
+  return '<div class="setup"><div class="wordmark">Nivesh<span>.</span></div>'+
+    '<p>Connect your personal quote relay to begin.<br>Paste the backend URL and key you were given.</p>'+
+    '<div class="f"><label>Backend URL</label><input id="cUrl" class="mono" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></div>'+
+    '<div class="f"><label>Key</label><input id="cKey" class="mono" autocomplete="off"></div>'+
+    '<div class="err" id="cErr"'+(msg?' style="display:block"':'')+'>'+esc(msg||"")+'</div>'+
+    '<button class="primary" id="cGo">Connect</button></div>';
+}
+function safeRender(){
+  const ae=document.activeElement;
+  if(sheetOpen||(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"))){ renderHeroOnly(); return; }
+  render();
+}
+function renderHeroOnly(){ const h=$("#hero"); if(h) h.innerHTML=heroHTML(totals(all())); }
+function render(){
+  const list=all(), core=list.filter(x=>x.s.pool!=="ipo"), ipo=list.filter(x=>x.s.pool==="ipo");
+  const h=$("#hero"); if(!h) return;
+  h.innerHTML=heroHTML(totals(list));
+  const c=$("#content");
+  if(tab==="flows") c.innerHTML=flowsHTML();
+  else if(tab==="plan") c.innerHTML=planHTML(core);
+  else{
+    const set=tab==="ipo"?ipo:core, coreInv=totals(core).inv;
+    if(!ready) c.innerHTML='<div class="empty">Loading…</div>';
+    else if(!set.length) c.innerHTML='<div class="empty"><b>'+(tab==="ipo"?"No IPO holdings":"No holdings yet")+'</b>Tap + to add or import.</div>';
+    else c.innerHTML='<div class="list">'+set.map(x=>cardHTML(x,coreInv)).join("")+"</div>";
+  }
+  bind();
+}
+function heroHTML(t){
+  const liveTag='<span class="live'+(live?"":" off")+'"><i></i>'+
+    (pendingSave?"saving…":(live?"live":"offline"))+
+    (meta.updatedAt?' · '+esc(ago(meta.updatedAt)):"")+'</span>';
+  return '<div class="lbl">Current value</div>'+
+    '<div class="big mono">'+rupee(t.cur)+'</div>'+
+    '<div class="stats">'+
+      '<div class="stat"><div class="v mono '+cls(t.pl)+'">'+smoney(t.pl)+' · '+spct(t.plPct)+'</div><div class="lbl">Net P&L</div></div>'+
+      '<div class="stat"><div class="v mono '+cls(t.day)+'">'+smoney(t.day)+' · '+spct(t.dayPct)+'</div><div class="lbl">Today</div></div>'+
+      '<div class="stat"><div class="v mono">'+rupee(t.inv)+'</div><div class="lbl">Invested</div></div>'+
+    '</div>'+
+    '<div class="sub"><span><b class="gain">'+t.up+'</b> up · <b class="loss">'+t.down+'</b> down</span>'+liveTag+'</div>'+
+    ((t.up+t.down)>0?'<div class="glbar"><i class="g" style="width:'+(t.up/(t.up+t.down)*100)+'%"></i><i class="l" style="flex:1"></i></div>':"");
+}
+const kv=(k,v,r)=>'<div class="kv'+(r?" r":"")+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
+function cardHTML(x,coreInv){
+  const {s,h,id}=x, isCore=s.pool!=="ipo";
+  const alloc=isCore&&coreInv>0?(h.inv/coreInv*100).toFixed(1)+"%":"—";
+  return '<div class="card" data-id="'+id+'">'+
+    '<div class="chead"><div class="t">'+esc(s.name)+'</div>'+
+      (s.symbol?'<span class="sym mono">'+esc(s.symbol)+'</span>':"")+'<span class="sp"></span>'+
+      '<span class="dpill mono '+(h.day>=0?"g":"l")+'">'+spct(h.dayPct)+'</span></div>'+
+    '<div class="g9 mono">'+
+      kv("Qty",h.qty)+
+      kv("Last price",price(s.price||0))+
+      kv("Current value",rupee(h.cur),1)+
+      kv("Unrealized P&L",'<span class="'+cls(h.pl)+'">'+smoney(h.pl)+'</span>')+
+      kv("P&L %",'<span class="'+cls(h.pl)+'">'+spct(h.plPct)+'</span>')+
+      kv("Day P&L",'<span class="'+cls(h.day)+'">'+smoney(h.day)+'</span>',1)+
+      kv("Avg buy",price(h.avg))+
+      kv("Invested",rupee(h.inv))+
+      kv(isCore?"Allocation":"Pool",isCore?alloc:"IPO",1)+
+    '</div>'+
+    '<div class="acts">'+
+      '<button class="buy" data-act="buy">Buy</button>'+
+      '<button class="sell" data-act="sell">Sell</button>'+
+      '<button data-act="hist">History</button>'+
+      '<button class="danger" data-act="del">Delete</button>'+
+    '</div></div>';
+}
+
+/* ---------- plan ---------- */
+function planHTML(core){
+  if(!core.length) return '<div class="empty"><b>Nothing to plan</b>Add core holdings first.</div>';
+  const coreInv=totals(core).inv;
+  const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
+  const T2=coreInv+cash;
+  let sumT=0, sumDelta=0, rows="";
+  for(const x of core){
+    const t=targetDraft[x.id]!==undefined?parseFloat(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:NaN);
+    const now=coreInv>0?x.h.inv/coreInv*100:0;
+    let act='<span style="color:var(--faint)">—</span>';
+    if(isFinite(t)&&t>0){ sumT+=t;
+      const d=t/100*T2-x.h.inv; sumDelta+=d;
+      const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
+      act=Math.abs(d)<1?'<span style="color:var(--muted)">On target</span>':
+        '<span class="'+(d>0?"gain":"loss")+'">'+(d>0?"Add ":"Take ")+rupee(d)+(sh?" · "+sh+" sh":"")+'</span>';
+    }
+    rows+='<div class="prl" data-id="'+x.id+'"><div class="n">'+esc(x.s.name)+'</div>'+
+      '<div class="now mono">'+now.toFixed(1)+'%</div>'+
+      '<input inputmode="decimal" placeholder="%" value="'+(targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:""))+'" data-plan-t>'+
+      '<div class="act mono" data-role="act">'+act+'</div></div>';
+  }
+  return '<div class="plan">'+
+    '<h3>Rebalance</h3><div class="sub">Core invested <span class="mono">'+rupee(coreInv)+'</span> → new total <span class="mono" data-role="t2">'+rupee(T2)+'</span></div>'+
+    '<div class="cashrow"><div class="togg'+(planMode==="wd"?" sell":"")+'" id="planT">'+
+      '<button aria-pressed="'+(planMode==="add")+'" data-v="add">Adding</button>'+
+      '<button aria-pressed="'+(planMode==="wd")+'" data-v="wd">Withdrawing</button></div>'+
+      '<input id="planCash" inputmode="decimal" placeholder="₹ 0" value="'+esc(planAmt)+'"></div>'+
+    '<div class="plhead"><span>Stock</span><span>Now</span><span>Target</span><span>Action</span></div>'+
+    rows+
+    '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
+    '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(cash-sumDelta)+'</b></span></div>'+
+    '</div><p class="hint" style="padding:0 4px">Targets are % of the new core total, computed together at portfolio level. “Unallocated” is cash your targets don’t yet place; stocks without a target keep their current amount.</p>';
+}
+
+/* ---------- flows ---------- */
+function flowCutoff(){
+  if(flowPeriod==="all") return "0000";
+  const d=new Date(); d.setMonth(d.getMonth()-({"3m":3,"6m":6,"1y":12}[flowPeriod]||0));
+  return d.toISOString().slice(0,10);
+}
+function flowsHTML(){
+  const cut=flowCutoff(), byM={};
+  for(const [id,t] of Object.entries(txns)){
+    if(!t.date||t.date<cut) continue;
+    const m=t.date.slice(0,7);
+    (byM[m]=byM[m]||{net:0,rows:[]});
+    byM[m].net+=(t.side==="buy"?1:-1)*t.qty*t.price;
+    byM[m].rows.push({id,...t});
+  }
+  const ms=Object.keys(byM).sort().reverse();
+  const chips='<div class="chips">'+["3m","6m","1y","all"].map(p=>
+    '<button aria-pressed="'+(flowPeriod===p)+'" data-period="'+p+'">'+p.toUpperCase()+'</button>').join("")+"</div>";
+  if(!ms.length) return chips+'<div class="empty"><b>No activity</b>Nothing in this period.</div>';
+  const max=Math.max(...ms.map(m=>Math.abs(byM[m].net)));
+  return chips+'<div class="flows">'+ms.map(m=>{
+    const v=byM[m].net, w=max>0?Math.max(3,Math.abs(v)/max*100):0, open=openMonth===m;
+    return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
+      '<div class="bar"><i class="'+(v>=0?"in":"out")+'" style="left:0;width:'+w+'%"></i></div>'+
+      '<div class="a mono '+(v>=0?"":"loss")+'">'+smoney(v)+'</div></button>'+
+      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
+        const s=stocks[t.stockId]||{name:"?"};
+        return '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
+          '<div class="nm">'+esc(s.name)+'</div>'+
+          '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
+          '<div class="q mono">'+t.qty+' × '+price(t.price)+'</div>'+
+          '<div class="amt mono '+(t.side==="buy"?"":"loss")+'">'+(t.side==="buy"?"+":"−")+rupee(t.qty*t.price)+'</div></div>';
+      }).join("")+"</div>":"");
+  }).join("")+"</div>"+
+  '<p class="hint" style="padding:0 4px">Net cash into (+) or out of (−) stocks. Tap a month for its transactions.</p>';
+}
+
+/* ---------- events ---------- */
+function bind(){
+  document.querySelectorAll(".card").forEach(card=>{
+    const id=card.dataset.id;
+    card.addEventListener("click",e=>{
+      const b=e.target.closest("[data-act]"); if(!b) return;
+      const a=b.dataset.act;
+      if(a==="buy") txnSheet(id,"buy");
+      else if(a==="sell") txnSheet(id,"sell");
+      else if(a==="hist") histSheet(id);
+      else if(a==="del") delStock(id,b);
+    });
+  });
+  document.querySelectorAll("[data-period]").forEach(b=>
+    b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
+  document.querySelectorAll("[data-month]").forEach(b=>
+    b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
+  bindPlan();
+}
+function bindPlan(){
+  const pt=$("#planT");
+  if(pt) pt.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+    planMode=b.dataset.v; render();});
+  const pc=$("#planCash");
+  if(pc) pc.addEventListener("input",()=>{planAmt=pc.value; refreshPlan();});
+  document.querySelectorAll("[data-plan-t]").forEach(inp=>{
+    const id=inp.closest(".prl").dataset.id;
+    inp.addEventListener("input",()=>{targetDraft[id]=inp.value; refreshPlan();});
+    inp.addEventListener("change",()=>{const v=parseFloat(inp.value);
+      if(stocks[id]){ stocks[id].target=isFinite(v)?v:null; saveRemote(); }});
+  });
+}
+function refreshPlan(){
+  const core=corePool(), coreInv=totals(core).inv;
+  const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
+  const T2=coreInv+cash;
+  let sumT=0,sumDelta=0;
+  document.querySelectorAll(".prl").forEach(row=>{
+    const id=row.dataset.id, x=core.find(c=>c.id===id); if(!x) return;
+    const t=parseFloat(row.querySelector("[data-plan-t]").value);
+    let act='<span style="color:var(--faint)">—</span>';
+    if(isFinite(t)&&t>0){ sumT+=t;
+      const d=t/100*T2-x.h.inv; sumDelta+=d;
+      const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
+      act=Math.abs(d)<1?'<span style="color:var(--muted)">On target</span>':
+        '<span class="'+(d>0?"gain":"loss")+'">'+(d>0?"Add ":"Take ")+rupee(d)+(sh?" · "+sh+" sh":"")+'</span>';
+    }
+    row.querySelector('[data-role="act"]').innerHTML=act;
+  });
+  const t2=document.querySelector('[data-role="t2"]'); if(t2) t2.textContent=rupee(T2);
+  const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
+  const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(cash-sumDelta);
+}
+function delStock(id,btn){
+  if(btn.dataset.armed!=="1"){ btn.dataset.armed="1"; btn.textContent="Sure?"; setTimeout(()=>{btn.dataset.armed="";btn.textContent="Delete";},2500); return; }
+  for(const tid of Object.keys(txns)) if(txns[tid].stockId===id) delete txns[tid];
+  delete stocks[id]; saveRemote(); render();
+}
+
+/* ---------- sheets ---------- */
+function openSheet(title,html){ sheetOpen=true; $("#sheetTitle").textContent=title; $("#sheetBody").innerHTML=html;
+  $("#scrim").classList.add("on"); $("#sheet").classList.add("on"); }
+function closeSheet(){ sheetOpen=false; $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on"); render(); }
+$("#scrim").addEventListener("click",closeSheet);
+$("#sheetClose").addEventListener("click",closeSheet);
+function showErr(sel,msg){ const el=$(sel); el.textContent=msg; el.style.display="block"; }
+
+/* add stock */
+function addSheet(){
+  openSheet("Add stock",
+    '<div class="togg full" id="poolT"><button aria-pressed="true" data-v="core">Core</button><button aria-pressed="false" data-v="ipo">IPO / short term</button></div>'+
+    '<div class="f"><label>Name</label><input id="fName" placeholder="e.g. HDFC Bank" autocomplete="off"></div>'+
+    '<div class="f2"><div class="f"><label>NSE symbol</label><input id="fSym" class="mono" placeholder="HDFCBANK" autocapitalize="characters" autocomplete="off"></div>'+
+    '<div class="f"><label>Date</label><input id="fDate" type="date" value="'+today()+'"></div></div>'+
+    '<div class="f2"><div class="f"><label>Quantity</label><input id="fQty" class="mono" inputmode="numeric"></div>'+
+    '<div class="f"><label>Buy price</label><input id="fPrice" class="mono" inputmode="decimal"></div></div>'+
+    '<div class="err" id="fErr"></div>'+
+    '<button class="primary" id="fGo">Add</button>'+
+    '<div style="text-align:center;margin-top:12px"><button class="linky" id="impBtn">Import holdings (paste rows / CSV)</button></div>');
+  let pool="core";
+  $("#poolT").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;pool=b.dataset.v;
+    $("#poolT").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
+  $("#impBtn").addEventListener("click",importSheet);
+  $("#fGo").addEventListener("click",()=>{
+    const name=$("#fName").value.trim(), qty=parseFloat($("#fQty").value), p=parseFloat($("#fPrice").value);
+    const sym=$("#fSym").value.trim().toUpperCase()||null, date=$("#fDate").value||today();
+    if(!name||!(qty>0)||!(p>0)) return showErr("#fErr","Name, quantity and buy price are required.");
+    const sid=uid();
+    stocks[sid]={name,symbol:sym,pool,price:p,prevClose:p,target:null,createdAt:Date.now()};
+    txns[uid()]={stockId:sid,side:"buy",qty,price:p,date,seq:Date.now()};
+    saveRemote(); closeSheet(); tab=pool==="ipo"?"ipo":"core"; setTab(tab); pollQuotes();
+  });
+}
+
+/* import */
+function importSheet(){
+  openSheet("Import holdings",
+    '<p class="hint" style="margin-top:4px">Paste rows — one buy per line, comma or tab separated:<br><span class="mono">Name, Date, Qty, Price</span> · date optional.</p>'+
+    '<div class="f"><textarea id="impTxt" placeholder="HDFC Bank, 2025-04-15, 30, 1520&#10;TCS, 12-06-2025, 8, 3890"></textarea></div>'+
+    '<div class="togg full" id="impPool"><button aria-pressed="true" data-v="core">Into Core</button><button aria-pressed="false" data-v="ipo">Into IPO</button></div>'+
+    '<div class="hint" id="impPrev"></div><div class="err" id="impErr"></div>'+
+    '<button class="primary" id="impGo" disabled>Import</button>');
+  let pool="core", parsed=[];
+  $("#impPool").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;pool=b.dataset.v;
+    $("#impPool").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
+  $("#impTxt").addEventListener("input",()=>{
+    parsed=parseImport($("#impTxt").value);
+    const names=[...new Set(parsed.map(r=>r.name))];
+    $("#impPrev").innerHTML=parsed.length?("Found <b>"+parsed.length+"</b> lots across <b>"+names.length+"</b> stocks: "+esc(names.slice(0,6).join(", "))+(names.length>6?"…":"")):"";
+    $("#impGo").disabled=!parsed.length;
+  });
+  $("#impGo").addEventListener("click",()=>{
+    const byName={};
+    const existing={}; for(const [id,s] of Object.entries(stocks)) existing[s.name.toLowerCase()]=id;
+    for(const r of parsed){
+      let sid=byName[r.name.toLowerCase()]||existing[r.name.toLowerCase()];
+      if(!sid){ sid=uid(); byName[r.name.toLowerCase()]=sid;
+        stocks[sid]={name:r.name,symbol:null,pool,price:r.price,prevClose:r.price,target:null,createdAt:Date.now()}; }
+      txns[uid()]={stockId:sid,side:"buy",qty:r.qty,price:r.price,date:r.date,seq:Date.now()+Math.random()};
+    }
+    saveRemote(); closeSheet();
+  });
+}
+function parseDate(s){
+  s=(s||"").trim();
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/); if(m) return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+  const d=new Date(s); if(s&&!isNaN(d)) return d.toISOString().slice(0,10);
+  return null;
+}
+function parseImport(text){
+  const out=[];
+  for(const line of text.split(/\n+/)){
+    if(!line.trim()) continue;
+    const parts=line.split(/\t|,|;/).map(p=>p.trim()).filter(Boolean);
+    if(parts.length<3) continue;
+    let name="",date=null; const nums=[];
+    for(const p of parts){
+      const d=parseDate(p);
+      const n=parseFloat(p.replace(/[₹,\s]/g,""));
+      if(d&&p.match(/\d{4}|\d{1,2}[-\/]\d{1,2}/)) date=d;
+      else if(isFinite(n)&&p.match(/^[₹\d.,\s]+$/)) nums.push(n);
+      else if(!name) name=p;
+    }
+    if(!name||nums.length<2) continue;
+    const qty=nums[0],pr=nums[1];
+    if(qty>0&&pr>0) out.push({name,date:date||today(),qty,price:pr});
+  }
+  return out;
+}
+
+/* buy / sell */
+function txnSheet(id,side){
+  const s=stocks[id], h=holding(id);
+  openSheet((side==="buy"?"Buy":"Sell")+" · "+s.name,
+    '<div class="togg full'+(side==="sell"?" sell":"")+'" id="sideT">'+
+      '<button aria-pressed="'+(side==="buy")+'" data-v="buy">Buy</button>'+
+      '<button aria-pressed="'+(side==="sell")+'" data-v="sell">Sell</button></div>'+
+    '<div class="f2"><div class="f"><label>Quantity</label><input id="tQty" class="mono" inputmode="numeric"></div>'+
+    '<div class="f"><label>Price</label><input id="tPrice" class="mono" inputmode="decimal" value="'+(s.price||"")+'"></div></div>'+
+    '<div class="f"><label>Date</label><input id="tDate" type="date" value="'+today()+'"></div>'+
+    '<p class="hint">Holding <span class="mono">'+h.qty+'</span> · avg <span class="mono">'+price(h.avg)+'</span> · sells consume oldest lots first (FIFO)</p>'+
+    '<div class="hint mono" id="fifoPrev"></div>'+
+    '<div class="err" id="tErr"></div>'+
+    '<button class="primary" id="tGo">Confirm</button>');
+  let cur=side;
+  const st=$("#sideT");
+  const prev=()=>{
+    if(cur!=="sell"){$("#fifoPrev").textContent="";return;}
+    const q=parseFloat($("#tQty").value); if(!(q>0)){$("#fifoPrev").textContent="";return;}
+    let r=q,cost=0; for(const l of h.lots){const take=Math.min(l.q,r);cost+=take*l.p;r-=take;if(r<=0)break;}
+    if(r>0){$("#fifoPrev").textContent="";return;}
+    const p=parseFloat($("#tPrice").value)||s.price||0;
+    const g=q*p-cost;
+    $("#fifoPrev").innerHTML="FIFO cost "+rupee(cost)+" → realized <span class='"+cls(g)+"'>"+smoney(g)+"</span>";
+  };
+  st.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;cur=b.dataset.v;
+    st.classList.toggle("sell",cur==="sell");
+    st.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    $("#sheetTitle").textContent=(cur==="buy"?"Buy":"Sell")+" · "+s.name; prev();});
+  $("#tQty").addEventListener("input",prev); $("#tPrice").addEventListener("input",prev);
+  $("#tGo").addEventListener("click",()=>{
+    const qty=parseFloat($("#tQty").value), p=parseFloat($("#tPrice").value), date=$("#tDate").value||today();
+    if(!(qty>0)||!(p>0)) return showErr("#tErr","Enter quantity and price.");
+    if(cur==="sell"&&qty>holding(id).qty) return showErr("#tErr","You hold only "+holding(id).qty+".");
+    txns[uid()]={stockId:id,side:cur,qty,price:p,date,seq:Date.now()};
+    saveRemote(); closeSheet();
+  });
+}
+
+/* history */
+function histSheet(id){
+  const s=stocks[id];
+  const rows=stockTxns(id).reverse();
+  openSheet(s.name+" · history",
+    (rows.length?rows.map(t=>
+      '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
+      '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
+      '<div class="q mono" style="flex:1">'+t.qty+' × '+price(t.price)+' = '+rupee(t.qty*t.price)+'</div>'+
+      '<button class="del" data-tid="'+t.id+'">Remove</button></div>').join("")
+    :'<p class="hint">No transactions.</p>')+
+    '<p class="hint">Remove a row to correct a mistake. ₹0 lots are bonus/split shares.</p>');
+  $("#sheetBody").addEventListener("click",e=>{
+    const b=e.target.closest(".del"); if(!b) return;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Sure?"; return; }
+    delete txns[b.dataset.tid]; saveRemote();
+    b.closest(".trow").remove();
+  });
+}
+
+/* prices */
+function pricesSheet(){
+  const list=all(); if(!list.length) return;
+  openSheet("Prices & symbols",
+    '<div class="phead"><span>Stock / symbol</span><span>Current</span><span>Prev close</span></div>'+
+    list.map(x=>'<div class="prow" data-id="'+x.id+'"><div class="n">'+esc(x.s.name)+
+      '<input data-f2="symbol" placeholder="NSE symbol" autocapitalize="characters" value="'+esc(x.s.symbol||"")+'"></div>'+
+      '<input class="pv" inputmode="decimal" data-f="price" value="'+(x.s.price||"")+'">'+
+      '<input class="pv" inputmode="decimal" data-f="prevClose" value="'+(x.s.prevClose||"")+'"></div>').join("")+
+    '<button class="primary" id="pGo">Save</button>'+
+    '<p class="hint">Prices refresh live every 15s for stocks with a symbol; manual values here are for stocks without one.</p>');
+  $("#pGo").addEventListener("click",()=>{
+    for(const row of document.querySelectorAll(".prow")){
+      const id=row.dataset.id, s=stocks[id]; if(!s) continue;
+      row.querySelectorAll("input[data-f]").forEach(i=>{const v=parseFloat(i.value); if(isFinite(v)&&v>0) s[i.dataset.f]=v;});
+      const sy=row.querySelector("input[data-f2]");
+      s.symbol=sy.value.trim().toUpperCase()||null;
+    }
+    meta.updatedAt=new Date().toISOString();
+    saveRemote(); closeSheet(); pollQuotes();
+  });
+}
+
+/* settings */
+function cfgSheet(){
+  openSheet("Settings",
+    '<div class="f"><label>Backend URL</label><input id="sUrl" class="mono" value="'+esc(CFG?CFG.url:"")+'"></div>'+
+    '<div class="f"><label>Key</label><input id="sKey" class="mono" value="'+esc(CFG?CFG.key:"")+'"></div>'+
+    '<div class="err" id="sErr"></div>'+
+    '<button class="primary" id="sGo">Save & reconnect</button>'+
+    '<button class="ghost" id="sExp">Export backup (JSON)</button>'+
+    '<button class="ghost" id="sImp">Restore from backup</button>'+
+    '<p class="hint">Data lives in nivesh-data.json in your Google Drive, synced through your own Apps Script relay. The backup file is a full snapshot you can restore anywhere.</p>');
+  $("#sGo").addEventListener("click",async()=>{
+    const url=$("#sUrl").value.trim(), key=$("#sKey").value.trim();
+    if(!url||!key) return showErr("#sErr","Both fields are required.");
+    CFG={url,key}; try{localStorage.setItem("nivesh_cfg",JSON.stringify(CFG));}catch(e){}
+    closeSheet(); await loadRemote(); render(); pollQuotes();
+  });
+  $("#sExp").addEventListener("click",()=>{
+    const blob=new Blob([JSON.stringify({stocks,txns,exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download="nivesh-backup-"+today()+".json"; a.click(); URL.revokeObjectURL(a.href);
+  });
+  $("#sImp").addEventListener("click",()=>{
+    openSheet("Restore backup",
+      '<div class="f"><label>Paste backup JSON</label><textarea id="rTxt"></textarea></div>'+
+      '<div class="err" id="rErr"></div>'+
+      '<button class="primary" id="rGo">Restore (replaces current data)</button>');
+    $("#rGo").addEventListener("click",()=>{
+      try{
+        const d=JSON.parse($("#rTxt").value);
+        if(!d.stocks||!d.txns) throw new Error("missing stocks/txns");
+        stocks=d.stocks; txns=d.txns; saveRemote(); closeSheet();
+      }catch(e){ showErr("#rErr","Not a valid backup: "+e.message); }
+    });
+  });
+}
+
+/* tabs */
+function setTab(t){ tab=t;
+  document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t?"true":"false"));
+  render(); }
+
+/* ---------- boot ---------- */
+function mountShell(){
+  $("#app").innerHTML=shellHTML();
+  applyTheme();
+  $("#themeBtn").addEventListener("click",cycleTheme);
+  $("#cfgBtn").addEventListener("click",cfgSheet);
+  $("#pricesBtn").addEventListener("click",pricesSheet);
+  $("#fab").addEventListener("click",addSheet);
+  $("#seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setTab(b.dataset.tab);});
+}
+function mountSetup(msg){
+  $("#app").innerHTML=setupHTML(msg);
+  applyTheme();
+  $("#cGo").addEventListener("click",async()=>{
+    const url=$("#cUrl").value.trim(), key=$("#cKey").value.trim();
+    if(!url||!key) return showErr("#cErr","Both fields are required.");
+    $("#cGo").disabled=true;
+    try{
+      const r=await fetch(url+"?k="+encodeURIComponent(key)+"&action=load");
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      CFG={url,key}; try{localStorage.setItem("nivesh_cfg",JSON.stringify(CFG));}catch(e){}
+      if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; }
+      ready=true; live=true; cacheLocal();
+      mountShell(); render(); pollQuotes();
+    }catch(e){ $("#cGo").disabled=false; showErr("#cErr","Could not connect: "+e.message); }
+  });
+}
+(async function boot(){
+  if("serviceWorker" in navigator){ try{navigator.serviceWorker.register("sw.js");}catch(e){} }
+  if(!CFG){ mountSetup(); return; }
+  try{ const c=JSON.parse(localStorage.getItem("nivesh_cache")||"null");
+    if(c){ stocks=c.stocks||{}; txns=c.txns||{}; meta=c.meta||{}; ready=true; } }catch(e){}
+  mountShell(); render();
+  await loadRemote(); render(); pollQuotes();
+})();
+</script>
+</body>
+</html>

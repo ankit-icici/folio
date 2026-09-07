@@ -338,13 +338,17 @@ async function loadRemote(){
 /* ---------- live quotes ---------- */
 function applyQuotes(q){
   if(!q) return false;
-  let hit=false;
+  let hit=false, oldest=0;
   for(const s of Object.values(stocks)){
     const v=q[s.symbol];
     if(!v||!(v.p>0)) continue;
     const sane = !s.price || (v.p < s.price*25 && v.p > s.price/25);
-    if(sane){ s.price=v.p; s.prevClose=v.pc||v.p; hit=true; }
+    if(sane){ s.price=v.p; s.prevClose=v.pc||v.p; hit=true;
+      if(v.t && (!oldest || v.t<oldest)) oldest=v.t; }
   }
+  /* badge should say how old the PRICES are, not when the reply landed:
+     the relay may have served them from its cache */
+  if(hit) meta.priceAt = oldest ? new Date(oldest).toISOString() : new Date().toISOString();
   return hit;
 }
 async function pollQuotes(){
@@ -369,6 +373,7 @@ async function pollQuotes(){
   }
 }
 setInterval(pollQuotes,15000);
+setInterval(()=>{ if(!document.hidden&&AUTH&&ready) renderHeroOnly(); },5000);
 document.addEventListener("visibilitychange",async()=>{
   if(document.hidden) return;
   /* re-sync after being backgrounded so a stale tab never overwrites newer data */
@@ -513,9 +518,10 @@ const kabs=n=>{const a=Math.abs(n);
 const skfmt=n=>sgn(n)+kabs(n);
 function heroHTML(t){
   const st = pendingSave ? "SAVING…" : (sync==="init" ? "SYNCING…" : (sync==="live" ? "LIVE" : "OFFLINE"));
-  const fresh = sync==="live" && meta.updatedAt;
+  const stamp = meta.priceAt || meta.updatedAt;
+  const fresh = sync==="live" && stamp;
   const liveTag='<span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
-    (fresh?' · '+esc(ago(meta.updatedAt)):"")+'</span>';
+    (fresh?' · '+esc(ago(stamp)):"")+'</span>';
   const g=t.up,l=t.down,tot=g+l;
   return '<div class="hcard">'+
     '<div class="hgrid">'+

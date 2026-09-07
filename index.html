@@ -71,6 +71,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .hbtn{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);padding:8px 2px;border-bottom:1px solid var(--gold)}
 .tbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:14px;line-height:1;color:var(--muted)}
 
+.idx{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 0 0}
+.idxc{background:var(--surface);border:1px solid var(--line2);border-radius:14px;padding:10px 13px;box-shadow:var(--card-shadow)}
+.idxn{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.idxv{font-size:16px;font-weight:600;margin-top:3px;letter-spacing:-.01em}
+.idxd{font-size:11.5px;font-weight:600;margin-top:1px;min-height:14px}
 .hero{padding:16px 0 4px}
 .hcard{background:linear-gradient(140deg,#191817 0%,#23201B 55%,#2C261C 100%);border:1px solid rgba(212,178,116,.28);border-radius:20px;padding:20px 20px 16px;color:#ECEAE4;box-shadow:0 12px 32px rgba(20,18,14,.28)}
 .hgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px 12px}
@@ -171,6 +176,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .plfoot{border-top:1px solid var(--line);margin-top:2px;padding-top:13px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
 .plfoot b{font-weight:600;color:var(--ink)}
 
+.netrow{margin-top:9px;padding-top:10px;border-top:1px solid var(--line2);font-size:12px;line-height:1.5}
+.netrow .dim{display:inline}
 /* plan table */
 .ptwrap{margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);
   border:1px solid var(--line2);border-radius:14px;box-shadow:var(--card-shadow)}
@@ -277,6 +284,8 @@ const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — 
 const errMsg=c=>ERRS[c]||("Error: "+c);
 let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
+const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
+let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day";
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="";
 const POOL2="Satellite";
@@ -321,7 +330,7 @@ function cycleTheme(){
 }
 
 /* ---------- persistence ---------- */
-function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta}));}catch(e){} }
+function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta,idx}));}catch(e){} }
 function saveRemote(force){
   if(!AUTH) return;
   cacheLocal();
@@ -345,14 +354,16 @@ let lastLoadAt=0;
 async function loadRemote(){
   if(!AUTH) return false;
   try{
-    const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
-    const r=await fetch(api("action=load"+(syms.length?"&symbols="+syms.join(","):"")));
+    const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))].concat(INDICES.map(i=>i.s));
+    const r=await fetch(api("action=load&symbols="+syms.join(",")));
     const j=await r.json();
     if(j.error){ ready=true; live=false; sync="off"; return false; }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
       if(j.data.history) meta.history=j.data.history; }
     if(j.quotes&&Object.keys(j.quotes).length){        /* relay bundled prices in - no 2nd trip */
-      lastQuotes=j.quotes; applyQuotes(j.quotes);
+      lastQuotes=j.quotes;
+      for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];
+      applyQuotes(j.quotes);
       meta.updatedAt=j.t||new Date().toISOString(); sync="live";
     }
     ready=true; live=true; failCount=0; lastLoadAt=Date.now();
@@ -365,7 +376,7 @@ async function loadRemote(){
 
 /* ---------- live quotes ---------- */
 function applyQuotes(q){
-  if(!q) return false;
+  if(!q) return false;   /* index symbols start with ^ and are handled separately */
   let hit=false, oldest=0;
   for(const s of Object.values(stocks)){
     const v=q[s.symbol];
@@ -382,12 +393,14 @@ function applyQuotes(q){
 async function pollQuotes(){
   if(!AUTH||document.hidden) return;
   const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
-  if(!syms.length) return;
+  const want=syms.concat(INDICES.map(i=>i.s));
+  if(!want.length) return;
   try{
-    const r=await fetch(api("action=quotes&symbols="+syms.join(",")));
+    const r=await fetch(api("action=quotes&symbols="+want.join(",")));
     const j=await r.json();
     if(j.quotes){
       lastQuotes=j.quotes;
+      for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];
       applyQuotes(j.quotes);
       meta.updatedAt=j.t||new Date().toISOString();
       live=true; sync="live"; failCount=0; cacheLocal();
@@ -495,6 +508,7 @@ function shellHTML(){
     '<button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
     '<button class="tbtn" id="cfgBtn" aria-label="Account">⚙</button></div></header>'+
     '<div class="status" id="status"></div>'+
+    '<section class="idx" id="idx"></section>'+
     '<section class="hero" id="hero"></section>'+
     '<nav class="seg" role="tablist" id="seg">'+
     '<button role="tab" aria-selected="true" data-tab="core">Core</button>'+
@@ -522,11 +536,23 @@ function safeRender(){
   if(sheetOpen||(ae&&(ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"))){ renderHeroOnly(); return; }
   render();
 }
-function renderHeroOnly(){ const h=$("#hero"); if(h) h.innerHTML=heroHTML(totals(all())); }
+function renderIdx(){
+  const el=$("#idx"); if(!el) return;
+  el.innerHTML=INDICES.map(i=>{
+    const v=idx[i.s];
+    const val=v?new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}).format(v.p):"—";
+    const ch=v&&v.pc>0?(v.p-v.pc)/v.pc*100:null;
+    return '<div class="idxc"><div class="idxn">'+i.n+'</div>'+
+      '<div class="idxv mono">'+val+'</div>'+
+      '<div class="idxd mono '+(ch===null?"":cls(ch))+'">'+(ch===null?"":spct(ch))+'</div></div>';
+  }).join("");
+}
+function renderHeroOnly(){ const h=$("#hero"); if(h) h.innerHTML=heroHTML(totals(all())); renderIdx(); }
 function render(){
   const list=all(), core=list.filter(x=>x.s.pool!=="ipo"), ipo=list.filter(x=>x.s.pool==="ipo");
   const h=$("#hero"); if(!h) return;
   h.innerHTML=heroHTML(totals(list));
+  renderIdx();
   const c=$("#content");
   if(tab==="flows") c.innerHTML=flowsHTML();
   else if(tab==="plan") c.innerHTML=planHTML(core);
@@ -625,18 +651,34 @@ function planRowAct(x,t,T2){
   return '<b class="'+(d>0?"gain":"loss")+'">'+(d>0?"+":"−")+rupee(d)+'</b>'+
     (sh?'<div class="shs">'+sh+' sh</div>':"");
 }
+/* trims release cash that funds the top-ups - show that, and what is left over */
+function netHTML(sell,buy,cash){
+  if(sell<1&&buy<1) return '<span class="dim">Set targets to see what to buy or trim.</span>';
+  const fresh=Math.max(0,buy-sell);          /* needs new money */
+  const spare=Math.max(0,sell-buy);          /* trims release more than the top-ups need */
+  let tail;
+  if(sell>=1&&buy>=1){
+    tail = fresh>0
+      ? ' · funds '+rupee(Math.min(sell,buy))+' of it, '+rupee(fresh)+' new money needed'
+      : (spare>0 ? ' · covers it all, '+rupee(spare)+' left over' : ' · exactly self-funding');
+  } else if(sell>=1){ tail=' · nothing to add, '+rupee(sell)+' freed up'; }
+  else { tail=' · '+rupee(Math.max(0,buy-cash))+(buy-cash>0?' beyond the cash you entered':' covered by the cash you entered'); }
+  return '<span class="loss">Trim '+rupee(sell)+'</span> → <span class="gain">Add '+rupee(buy)+'</span>'+
+    '<span class="dim">'+esc(tail)+'</span>';
+}
 function planHTML(core){
   if(!core.length) return '<div class="empty"><b>Nothing to plan</b>Add core holdings first.</div>';
   const coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
   const T2=coreInv+cash;
-  let sumT=0, sumDelta=0, rows="";
+  let sumT=0, sumDelta=0, sellSum=0, buySum=0, rows="";
   const list=[...core].sort((a,b)=>a.s.name.localeCompare(b.s.name));
   for(const x of list){
     const t=targetDraft[x.id]!==undefined?parseFloat(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:NaN);
     const bb=buyDraft[x.id]!==undefined?parseFloat(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:NaN);
     const now=coreInv>0?x.h.inv/coreInv*100:0;
-    if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-x.h.inv; }
+    if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
+      if(Math.abs(d)>=Math.max(1,T2*0.005)){ if(d>0) buySum+=d; else sellSum+=-d; } }
     const tv=targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:"");
     const bv=buyDraft[x.id]!==undefined?esc(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:"");
     rows+='<tr data-id="'+x.id+'">'+
@@ -656,6 +698,7 @@ function planHTML(core){
       '<input id="planCash" inputmode="decimal" placeholder="₹ 0" value="'+esc(planAmt)+'"></div>'+
     '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(cash-sumDelta)+'</b></span></div>'+
+    '<div class="netrow" data-role="net">'+netHTML(sellSum,buySum,cash)+'</div>'+
     '</div>'+
     '<div class="ptwrap"><table class="pt"><thead><tr>'+
       '<th scope="col">Stock</th><th scope="col">Buy&nbsp;&lt;</th><th scope="col">CMP</th>'+
@@ -745,13 +788,14 @@ function refreshPlan(){
   const core=corePool(), coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
   const T2=coreInv+cash;
-  let sumT=0,sumDelta=0;
+  let sumT=0,sumDelta=0,sellSum=0,buySum=0;
   document.querySelectorAll(".pt tbody tr").forEach(row=>{
     const id=row.dataset.id, x=core.find(c=>c.id===id); if(!x) return;
     const t=parseFloat(row.querySelector("[data-plan-t]").value);
     const bb=parseFloat(row.querySelector("[data-plan-b]").value);
     const now=coreInv>0?x.h.inv/coreInv*100:0;
-    if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-x.h.inv; }
+    if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
+      if(Math.abs(d)>=Math.max(1,T2*0.005)){ if(d>0) buySum+=d; else sellSum+=-d; } }
     row.querySelector('[data-role="cmp"]').textContent=priceShort(x.s.price||0);
     row.querySelector('[data-role="ub"]').innerHTML=buyChip(x.s.price,bb);
     row.querySelector('[data-role="now"]').innerHTML=allocChip(now,t);
@@ -760,6 +804,7 @@ function refreshPlan(){
   const t2=document.querySelector('[data-role="t2"]'); if(t2) t2.textContent=rupee(T2);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
   const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(cash-sumDelta);
+  const nt=document.querySelector('[data-role="net"]'); if(nt) nt.innerHTML=netHTML(sellSum,buySum,cash);
 }
 function delStock(id,btn){
   if(btn.dataset.armed!=="1"){ btn.dataset.armed="1"; btn.textContent="Sure?"; setTimeout(()=>{btn.dataset.armed="";btn.textContent="Delete";},2500); return; }
@@ -1177,7 +1222,7 @@ function mountSetup(mode){
   if("serviceWorker" in navigator){ try{navigator.serviceWorker.register("sw.js");}catch(e){} }
   if(!AUTH){ mountSetup("in"); return; }
   try{ const c=JSON.parse(localStorage.getItem("nivesh_cache_"+AUTH.u)||"null");
-    if(c){ stocks=c.stocks||{}; txns=c.txns||{}; meta=c.meta||{}; ready=true; } }catch(e){}
+    if(c){ stocks=c.stocks||{}; txns=c.txns||{}; meta=c.meta||{}; idx=c.idx||{}; ready=true; } }catch(e){}
   mountShell(); render();
   /* both relay calls go out at once - the second used to wait on the first,
      which doubled the cold-start wait before correct prices appeared */

@@ -649,6 +649,65 @@ function planHTML(core){
     '<div class="legend"><span><i class="achip under" style="padding:2px 7px">·</i> under target</span><span><i class="achip mid" style="padding:2px 7px">·</i> near target</span><span><i class="achip over" style="padding:2px 7px">·</i> over target</span></div>'+
     '<p class="hint" style="padding:0 4px">“Buy if below” is your own entry price — the badge turns green when the market drops to it. Targets are % of the new core total and the action is computed across the whole portfolio, so “Unallocated” is cash your targets don’t yet place.</p>';
 }
+/* ---------- flows ---------- */
+function flowCutoff(){
+  if(flowPeriod==="all") return "0000";
+  const d=new Date(); d.setMonth(d.getMonth()-({"3m":3,"6m":6,"1y":12}[flowPeriod]||0));
+  return d.toISOString().slice(0,10);
+}
+function flowsHTML(){
+  const cut=flowCutoff(), byM={};
+  for(const f of cashFlows()){
+    if(!f.date||f.date<cut) continue;
+    const m=f.date.slice(0,7);
+    (byM[m]=byM[m]||{net:0,rows:[]});
+    byM[m].net+=(f.side==="sell"?1:-1)*f.amt;
+    byM[m].rows.push(f);
+  }
+  const ms=Object.keys(byM).sort().reverse();
+  const chips='<div class="chips">'+["3m","6m","1y","all"].map(p=>
+    '<button aria-pressed="'+(flowPeriod===p)+'" data-period="'+p+'">'+p.toUpperCase()+'</button>').join("")+"</div>";
+  if(!ms.length) return chips+'<div class="empty"><b>No activity</b>Nothing in this period.</div>';
+  const max=Math.max(...ms.map(m=>Math.abs(byM[m].net)));
+  return chips+'<div class="flows">'+ms.map(m=>{
+    const v=byM[m].net, w=max>0?Math.max(3,Math.abs(v)/max*100):0, open=openMonth===m;
+    return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
+      '<div class="bar"><i class="'+(v>0?"ret":"in")+'" style="left:0;width:'+w+'%"></i></div>'+
+      '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button>'+
+      (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
+        const d=new Date(t.date+"T00:00:00");
+        const dl=isNaN(d)?t.date:d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+        return '<div class="fr"><div class="fl">'+
+          '<div class="fn"><span class="nw">'+esc(t.name)+(t.approx?' <span class="apx">≈</span>':"")+'</span>'+
+            '<span class="tag '+(t.side==="buy"?"b":"s")+'">'+t.side.toUpperCase()+'</span></div>'+
+          '<div class="fs mono">'+esc(dl)+' · '+t.qty+' × '+price(t.amt/t.qty)+'</div></div>'+
+          '<div class="fa mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>';
+      }).join("")+"</div>":"");
+  }).join("")+"</div>"+
+  '<p class="hint" style="padding:0 4px">Your pocket’s view: money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions.</p>';
+}
+
+/* ---------- events ---------- */
+function bind(){
+  document.querySelectorAll(".card").forEach(card=>{
+    const id=card.dataset.id;
+    card.addEventListener("click",e=>{
+      const b=e.target.closest("[data-act]"); if(!b) return;
+      const a=b.dataset.act;
+      if(a==="buy") txnSheet(id,"buy");
+      else if(a==="sell") txnSheet(id,"sell");
+      else if(a==="hist") histSheet(id);
+      else if(a==="del") delStock(id,b);
+    });
+  });
+  document.querySelectorAll("[data-sort]").forEach(b=>
+    b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
+  document.querySelectorAll("[data-period]").forEach(b=>
+    b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
+  document.querySelectorAll("[data-month]").forEach(b=>
+    b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
+  bindPlan();
+}
 function bindPlan(){
   const pt=$("#planT");
   if(pt) pt.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;

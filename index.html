@@ -718,18 +718,66 @@ $("#sheetClose").addEventListener("click",closeSheet);
 function showErr(sel,msg){ const el=$(sel); el.textContent=msg; el.style.display="block"; }
 
 
+
+/* stocks looked up in the last 7 days, kept per account on this device */
+function recents(){
+  try{
+    const r=JSON.parse(localStorage.getItem("nivesh_recent_"+AUTH.u)||"[]");
+    const cut=Date.now()-7*86400000;
+    return r.filter(x=>x&&x.s&&x.t>cut).sort((a,b)=>b.t-a.t).slice(0,12);
+  }catch(e){ return []; }
+}
+function rememberSearch(sym,name){
+  try{
+    const list=recents().filter(x=>x.s!==sym);
+    list.unshift({s:sym,n:name,t:Date.now()});
+    localStorage.setItem("nivesh_recent_"+AUTH.u,JSON.stringify(list.slice(0,12)));
+  }catch(e){}
+}
+function rowHTML(sym,name,held,when){
+  return '<div class="fr" data-sym="'+esc(sym)+'" data-name="'+esc(name)+'"><div class="fl">'+
+    '<div class="fn"><span class="nw">'+esc(name)+'</span>'+(held?'<span class="tag s">HELD</span>':'')+'</div>'+
+    '<div class="fs mono">'+esc(sym)+(when?' · '+esc(when):'')+'</div></div>'+
+    '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div></div>';
+}
+async function priceRows(scope){
+  const rows=[...document.querySelectorAll(scope+" [data-sym]")];
+  if(!rows.length) return;
+  const syms=[...new Set(rows.map(r=>r.dataset.sym))].join(",");
+  try{
+    const j=await fetch(api("action=quotes&symbols="+syms)).then(r=>r.json());
+    if(!j.quotes) return;
+    rows.forEach(row=>{
+      const v=j.quotes[row.dataset.sym], cell=row.querySelector("[data-px]");
+      if(!cell) return;
+      if(!v||!(v.p>0)){ cell.innerHTML='<span style="color:var(--faint)">—</span>'; return; }
+      const ch=v.pc>0?(v.p-v.pc)/v.pc*100:0;
+      cell.innerHTML=price(v.p)+'<div class="fs mono '+cls(ch)+'" style="text-align:right">'+spct(ch)+'</div>';
+    });
+  }catch(e){}
+}
+function recentHTML(){
+  const r=recents();
+  if(!r.length) return '<p class="hint">Type at least two letters.</p>';
+  const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
+  return '<div class="secthead" style="margin-top:14px">Recently searched</div>'+
+    r.map(x=>rowHTML(x.s,x.n,held[x.s],ago(new Date(x.t).toISOString()))).join("");
+}
+
 /* look up any listed stock, in the portfolio or not */
 let searchTimer=null, searchSeq=0;
 function searchSheet(){
+  tapsBound=false;
   openSheet("Search stocks",
     '<div class="f"><label>Company or symbol</label>'+
     '<input id="qIn" placeholder="e.g. Tata Motors, INFY" autocomplete="off" autocapitalize="none"></div>'+
-    '<div id="qOut"><p class="hint">Type at least two letters.</p></div>');
+    '<div id="qOut">'+recentHTML()+'</div>');
   const inp=$("#qIn"); inp.focus();
+  bindResultTaps(); priceRows("#qOut");
   inp.addEventListener("input",()=>{
     const q=inp.value.trim();
     clearTimeout(searchTimer);
-    if(q.length<2){ $("#qOut").innerHTML='<p class="hint">Type at least two letters.</p>'; return; }
+    if(q.length<2){ $("#qOut").innerHTML=recentHTML(); bindResultTaps(); priceRows("#qOut"); return; }
     $("#qOut").innerHTML='<p class="hint">Searching…</p>';
     searchTimer=setTimeout(()=>runSearch(q),350);
   });
@@ -746,30 +794,20 @@ async function runSearch(q){
     return;
   }
   if(!list.length){ $("#qOut").innerHTML='<p class="hint">Nothing found for “'+esc(q)+'”.</p>'; return; }
-  const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=s.name;
-  $("#qOut").innerHTML=list.map(r=>
-    '<div class="fr" data-sym="'+esc(r.s)+'" data-name="'+esc(r.n)+'"><div class="fl">'+
-      '<div class="fn"><span class="nw">'+esc(r.n)+'</span>'+
-        (held[r.s]?'<span class="tag s">HELD</span>':'')+'</div>'+
-      '<div class="fs mono">'+esc(r.s)+'</div></div>'+
-      '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div></div>').join("")+
+  const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
+  $("#qOut").innerHTML=list.map(r=>rowHTML(r.s,r.n,held[r.s],"")).join("")+
     '<p class="hint">Tap a result to add it to your portfolio.</p>';
+  bindResultTaps();
+  priceRows("#qOut");
+}
+let tapsBound=false;
+function bindResultTaps(){
+  if(tapsBound) return; tapsBound=true;
   $("#qOut").addEventListener("click",e=>{
     const row=e.target.closest("[data-sym]"); if(!row) return;
-    closeSheet(); addSheet(row.dataset.name, row.dataset.sym);
+    rememberSearch(row.dataset.sym,row.dataset.name);
+    closeSheet(); addSheet(row.dataset.name,row.dataset.sym);
   });
-  try{
-    const syms=list.map(r=>r.s).join(",");
-    const j=await fetch(api("action=quotes&symbols="+syms)).then(r=>r.json());
-    if(mine!==searchSeq||!j.quotes) return;
-    document.querySelectorAll("#qOut [data-sym]").forEach(row=>{
-      const v=j.quotes[row.dataset.sym], cell=row.querySelector("[data-px]");
-      if(!cell) return;
-      if(!v||!(v.p>0)){ cell.innerHTML='<span style="color:var(--faint)">—</span>'; return; }
-      const ch=v.pc>0?(v.p-v.pc)/v.pc*100:0;
-      cell.innerHTML=price(v.p)+'<div class="fs mono '+cls(ch)+'" style="text-align:right">'+spct(ch)+'</div>';
-    });
-  }catch(e){}
 }
 
 /* add stock */

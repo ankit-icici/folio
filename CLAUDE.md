@@ -75,10 +75,13 @@ one place that computes it (core invested + the cash box + any single-stock matc
 
 - `planRowAct` shows `d = target% x T2 - invested`, i.e. the move when the total is already
   fixed at `T2` (the cash box money is counted in `T2` before it is distributed).
+- `planMoves` — per-stock what-if amounts, keyed by stock id, values are raw input strings.
+  Tapping a stock name in the table seeds one and re-renders; the amount is then freely editable
+  (negative = withdrawal) and every row recomputes against the new total. The Action column of a
+  stock with a what-if shows what is **still** left to do after that amount, not the original gap.
 - `planMatch(inv,t,T2) = d / (1 - t/100)` — the amount to transact in **one** stock so it lands on
-  target *after* that trade changes the portfolio total. Tapping a stock name sets `planSim`, and
-  every other row then recomputes against the larger/smaller total. Not the same as `d`; don't
-  conflate them.
+  target *after* that trade changes the portfolio total. Only used to seed a new `planMoves` entry.
+  Not the same as `d`; don't conflate them.
 - `planDilute` — fresh money into the *other* holdings that brings an over-weight name down to
   target with no sale. Shown per row as "or +Rs X in others".
 - `planBand(t,T2) = max(500, 2% of the stock's own target value)` is the on-target tolerance.

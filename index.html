@@ -647,33 +647,36 @@ function priceShort(n){
   if(!(n>0)) return "—";
   return n>=1000 ? "₹"+inr0.format(Math.round(n)) : "₹"+n.toFixed(2);
 }
+/* how far off target still counts as on target: 2% of this stock's own target size */
+function planBand(t,T2){ return Math.max(500, t/100*T2*0.02); }
+/* fresh money into the OTHER holdings that brings this one inside the band, no sale */
+function planDilute(inv,t,T2){
+  const r=t/100;
+  const need=Math.min(inv/r/1.02, Math.max((inv-500)/r,0));
+  return need>T2?need-T2:0;
+}
 function planRowAct(x,t,T2){
   if(!isFinite(t)||t<=0) return '<span class="dim">set tgt</span>';
   const d=t/100*T2-x.h.inv;
-  if(Math.abs(d)<Math.max(1,T2*0.005)) return '<span class="dim">on target</span>';
+  if(Math.abs(d)<planBand(t,T2)) return '<span class="dim">on target</span>';
   const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
   const dil=d<0?planDilute(x.h.inv,t,T2):0;   /* the no-sale route */
   return '<b class="'+(d>0?"gain":"loss")+'">'+(d>0?"+":"−")+rupee(d)+'</b>'+
     (sh?'<div class="shs">'+sh+' sh</div>':"")+
     (dil>0?'<div class="dil">or +'+compactR(dil)+' in others</div>':"");
 }
-/* fresh money into the OTHER holdings that dilutes this one to target with no sale */
-function planDilute(inv,t,T2){ const need=inv/(t/100); return need>T2?need-T2:0; }
+
 /* trims release cash that funds the top-ups - show that, and what is left over */
 function netHTML(sell,buy,cash,dil){
   if(sell<1&&buy<1) return '<span class="dim">Set targets to see what to buy or trim.</span>';
-  const fresh=Math.max(0,buy-sell);          /* needs new money */
-  const spare=Math.max(0,sell-buy);          /* trims release more than the top-ups need */
+  const fresh=buy-sell;
   let tail;
-  if(sell>=1&&buy>=1){
-    tail = fresh>0
-      ? ' · funds '+rupee(Math.min(sell,buy))+' of it, '+rupee(fresh)+' new money needed'
-      : (spare>0 ? ' · covers it all, '+rupee(spare)+' left over' : ' · exactly self-funding');
-  } else if(sell>=1){ tail=' · nothing to add, '+rupee(sell)+' freed up'; }
-  else { tail=' · '+rupee(Math.max(0,buy-cash))+(buy-cash>0?' beyond the cash you entered':' covered by the cash you entered'); }
+  if(sell>=1&&buy>=1) tail = fresh>0 ? ' · needs '+rupee(fresh)+' new' : ' · '+rupee(-fresh)+' left over';
+  else if(sell>=1) tail=' · '+rupee(sell)+' freed';
+  else tail = buy-cash>0 ? ' · needs '+rupee(buy-cash)+' new' : ' · covered';
   return '<span class="loss">Trim '+rupee(sell)+'</span> → <span class="gain">Add '+rupee(buy)+'</span>'+
     '<span class="dim">'+esc(tail)+'</span>'+
-    (dil>0?'<div class="nodil">No selling: add <b class="mono">'+rupee(dil)+'</b> more to the rest and the over-weight names dilute down to target.</div>':"");
+    (dil>0?'<div class="nodil">No selling: +<b class="mono">'+rupee(dil)+'</b> into the rest instead.</div>':"");
 }
 function planHTML(core){
   if(!core.length) return '<div class="empty"><b>Nothing to plan</b>Add core holdings first.</div>';
@@ -685,9 +688,9 @@ function planHTML(core){
   for(const x of list){
     const t=targetDraft[x.id]!==undefined?parseFloat(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:NaN);
     const bb=buyDraft[x.id]!==undefined?parseFloat(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:NaN);
-    const now=coreInv>0?x.h.inv/coreInv*100:0;
+    const now=T2>0?x.h.inv/T2*100:0;
     if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
-      if(Math.abs(d)>=Math.max(1,T2*0.005)){
+      if(Math.abs(d)>=planBand(t,T2)){
         if(d>0) buySum+=d;
         else { sellSum+=-d; dilMax=Math.max(dilMax,planDilute(x.h.inv,t,T2)); } } }
     const tv=targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:"");
@@ -713,9 +716,8 @@ function planHTML(core){
     '</div>'+
     '<div class="ptwrap"><table class="pt"><thead><tr>'+
       '<th scope="col">Stock</th><th scope="col">Buy&nbsp;&lt;</th><th scope="col">CMP</th>'+
-      '<th scope="col">Buy?</th><th scope="col">Tgt</th><th scope="col">Now</th><th scope="col">Action</th>'+
-    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<p class="hint" style="padding:0 4px">Swipe the table sideways for more columns. <b>Buy&lt;</b> is your own entry price — <b>Buy?</b> turns green when the market reaches it. <b>Tgt</b>/<b>Now</b> are % of the new core total; <b>Action</b> is computed across the whole portfolio.</p>';
+      '<th scope="col">Buy?</th><th scope="col">Tgt</th><th scope="col" data-role="nowh">'+(cash?"New":"Now")+'</th><th scope="col">Action</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /* ---------- flows ---------- */
 function flowCutoff(){
@@ -804,9 +806,9 @@ function refreshPlan(){
     const id=row.dataset.id, x=core.find(c=>c.id===id); if(!x) return;
     const t=parseFloat(row.querySelector("[data-plan-t]").value);
     const bb=parseFloat(row.querySelector("[data-plan-b]").value);
-    const now=coreInv>0?x.h.inv/coreInv*100:0;
+    const now=T2>0?x.h.inv/T2*100:0;
     if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
-      if(Math.abs(d)>=Math.max(1,T2*0.005)){
+      if(Math.abs(d)>=planBand(t,T2)){
         if(d>0) buySum+=d;
         else { sellSum+=-d; dilMax=Math.max(dilMax,planDilute(x.h.inv,t,T2)); } } }
     row.querySelector('[data-role="cmp"]').textContent=priceShort(x.s.price||0);
@@ -817,6 +819,7 @@ function refreshPlan(){
   const t2=document.querySelector('[data-role="t2"]'); if(t2) t2.textContent=rupee(T2);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
   const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(cash-sumDelta);
+  const nh=document.querySelector('[data-role="nowh"]'); if(nh) nh.textContent=cash?"New":"Now";
   const nt=document.querySelector('[data-role="net"]'); if(nt) nt.innerHTML=netHTML(sellSum,buySum,cash,dilMax);
 }
 function delStock(id,btn){

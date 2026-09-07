@@ -823,9 +823,9 @@ function recentHTML(){
 }
 
 /* look up any listed stock, in the portfolio or not */
-let searchTimer=null, searchSeq=0;
+let searchTimer=null, searchSeq=0, recTimer=null;
 function searchSheet(){
-  tapsBound=false;
+  tapsBound=false; clearTimeout(recTimer);
   openSheet("Search stocks",
     '<div class="f"><label>Company or symbol</label>'+
     '<input id="qIn" placeholder="e.g. Tata Motors, INFY" autocomplete="off" autocapitalize="none"></div>'+
@@ -835,7 +835,7 @@ function searchSheet(){
   inp.addEventListener("input",()=>{
     const q=inp.value.trim();
     clearTimeout(searchTimer);
-    if(q.length<2){ $("#qOut").innerHTML=recentHTML(); bindResultTaps(); priceRows("#qOut"); return; }
+    if(q.length<2){ clearTimeout(recTimer); $("#qOut").innerHTML=recentHTML(); bindResultTaps(); priceRows("#qOut"); return; }
     $("#qOut").innerHTML='<p class="hint">Searching…</p>';
     searchTimer=setTimeout(()=>runSearch(q),350);
   });
@@ -854,9 +854,15 @@ async function runSearch(q){
   if(!list.length){ $("#qOut").innerHTML='<p class="hint">Nothing found for “'+esc(q)+'”.</p>'; return; }
   const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
   $("#qOut").innerHTML=list.map(r=>rowHTML(r.s,r.n,held[r.s],"")).join("")+
-    '<p class="hint">Tap a result to add it to your portfolio.</p>';
+    '<p class="hint">Tap a result to add it to your portfolio. Searches are kept under Recently searched for 7 days.</p>';
   bindResultTaps();
   priceRows("#qOut");
+  /* a look-up counts as a search even if you never tap it: once the query has
+     settled, file the best match under Recently searched */
+  clearTimeout(recTimer);
+  recTimer=setTimeout(()=>{
+    if(mine===searchSeq && list[0]) rememberSearch(list[0].s, list[0].n);
+  },1800);
 }
 let tapsBound=false;
 function bindResultTaps(){

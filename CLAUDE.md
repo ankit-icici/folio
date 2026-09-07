@@ -68,6 +68,24 @@ Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n
 - Prices: `price` and `prevClose` drive day P&L; live polling every 15 s overwrites them for any
   stock with a `symbol`.
 
+### Rebalance maths (Plan tab)
+
+Everything is read against `T2`, the total the plan is being evaluated at — `planCtx()` is the
+one place that computes it (core invested + the cash box + any single-stock match).
+
+- `planRowAct` shows `d = target% x T2 - invested`, i.e. the move when the total is already
+  fixed at `T2` (the cash box money is counted in `T2` before it is distributed).
+- `planMatch(inv,t,T2) = d / (1 - t/100)` — the amount to transact in **one** stock so it lands on
+  target *after* that trade changes the portfolio total. Tapping a stock name sets `planSim`, and
+  every other row then recomputes against the larger/smaller total. Not the same as `d`; don't
+  conflate them.
+- `planDilute` — fresh money into the *other* holdings that brings an over-weight name down to
+  target with no sale. Shown per row as "or +Rs X in others".
+- `planBand(t,T2) = max(500, 2% of the stock's own target value)` is the on-target tolerance.
+  It MUST stay in sync with `planDilute`, which solves to that same threshold — a band expressed
+  as a share of the whole portfolio makes small positions read "on target" while the dilution
+  figure still asks for lakhs. That exact mismatch was a reported bug; keep them coupled.
+
 ## Data durability (do not weaken)
 
 1. Server rejects any save that zeroes out stocks or drops >50% of transactions

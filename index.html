@@ -317,12 +317,21 @@ let lastLoadAt=0;
 async function loadRemote(){
   if(!AUTH) return false;
   try{
-    const r=await fetch(api("action=load"));
+    const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
+    const r=await fetch(api("action=load"+(syms.length?"&symbols="+syms.join(","):"")));
     const j=await r.json();
     if(j.error){ ready=true; live=false; sync="off"; return false; }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
       if(j.data.history) meta.history=j.data.history; }
-    ready=true; live=true; sync="live"; failCount=0; lastLoadAt=Date.now(); cacheLocal(); return true;
+    if(j.quotes&&Object.keys(j.quotes).length){        /* relay bundled prices in - no 2nd trip */
+      lastQuotes=j.quotes; applyQuotes(j.quotes);
+      meta.updatedAt=j.t||new Date().toISOString(); sync="live";
+    }
+    ready=true; live=true; failCount=0; lastLoadAt=Date.now();
+    const needQuotes=Object.values(stocks).some(s=>s.symbol);
+    if(!needQuotes) sync="live";          /* nothing to price - we are done */
+    else if(sync==="off") sync="init";    /* connected again, prices still pending */
+    cacheLocal(); return true;
   }catch(e){ ready=true; live=false; if(sync!=="live") sync="off"; return false; }
 }
 
@@ -1011,7 +1020,9 @@ function mountSetup(mode){
   await dataP;
   if(lastQuotes) applyQuotes(lastQuotes);   /* fresh server data must not clobber newer prices */
   render();
-  await quoteP; render();
+  await quoteP;
+  if(lastQuotes) applyQuotes(lastQuotes);
+  render();
 })();
 </script>
 </body>

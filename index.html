@@ -197,6 +197,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .pt .act b{font-weight:600;font-size:11.5px}
 .pt .shs{font-size:9.5px;color:var(--muted)}
 .pt .dil{font-size:9.5px;color:var(--gold);margin-top:1px}
+.mvs{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+.mv{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--line);
+  border-radius:11px;padding:7px 8px 7px 11px}
+.mv .mvn{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--gold);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv input{width:88px;background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:6px 8px;font:inherit;font-size:12.5px;color:var(--ink);text-align:right}
+.mv .mvsh{font-size:10.5px;color:var(--muted);min-width:44px;text-align:right}
+.mv button{background:none;border:0;color:var(--faint);font-size:17px;line-height:1;
+  padding:2px 4px;cursor:pointer}
 .pt tbody th[data-sim]{cursor:pointer}
 .pt tbody th[data-sim] span{text-decoration:underline dotted var(--line);text-underline-offset:3px}
 .pt tr.simrow th,.pt tr.simrow td{background-color:var(--surface);
@@ -291,7 +301,7 @@ let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
 const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
 let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day";
-let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planSim=null;
+let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
 let saveTimer=null, pendingSave=false;
 
@@ -655,22 +665,37 @@ const planB=x=>buyDraft[x.id]!==undefined?parseFloat(buyDraft[x.id]):(isFinite(x
    exactly on target is d/(1-t), not d */
 function planMatch(inv,t,T2){ const r=t/100; return r>0&&r<1?(r*T2-inv)/(1-r):0; }
 /* resolves the cash box plus any one-stock match into the total everything is read against */
+/* resolves the cash box plus any per-stock what-ifs into the total everything is read against */
 function planCtx(core){
   const coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
-  let T2=coreInv+cash, sim=null;
-  if(planSim){
-    const x=core.find(c=>c.id===planSim), t=x?planT(x):NaN;
-    if(x&&isFinite(t)&&t>0&&t<100){
-      const mv=planMatch(x.h.inv,t,T2);
-      if(Math.abs(mv)>=1){ sim={id:x.id,name:x.s.name,amt:mv}; T2+=mv; }
-    }
+  const moves={}; let put=0;
+  for(const x of core){
+    if(planMoves[x.id]===undefined) continue;
+    const v=parseFloat(planMoves[x.id]); const n=isFinite(v)?v:0;
+    moves[x.id]=n; put+=n;
   }
-  return {coreInv,cash,T2,sim};
+  return {coreInv,cash,moves,put,T2:coreInv+cash+put};
 }
 function planSubHTML(c){
-  return 'Core invested <span class="mono">'+rupee(c.coreInv)+'</span> → new total <span class="mono">'+rupee(c.T2)+'</span>'+
-    (c.sim?' · matching <b>'+esc(c.sim.name)+'</b>':'');
+  return 'Core invested <span class="mono">'+rupee(c.coreInv)+'</span> → new total <span class="mono">'+rupee(c.T2)+'</span>';
+}
+/* what-if amounts, one line per stock, kept above the table so they stay in view */
+function movesHTML(core,c){
+  const ids=Object.keys(c.moves); if(!ids.length) return "";
+  const nm=id=>{const x=core.find(k=>k.id===id); return x?x.s.name:"";};
+  ids.sort((a,b)=>nm(a).localeCompare(nm(b)));   /* same order as the table */
+  return '<div class="mvs">'+ids.map(id=>{
+    const x=core.find(k=>k.id===id); if(!x) return "";
+    return '<div class="mv"><span class="mvn">'+esc(x.s.name)+'</span>'+
+      '<input inputmode="decimal" data-mv-i="'+id+'" value="'+esc(String(planMoves[id]))+'" aria-label="Amount into '+esc(x.s.name)+'">'+
+      '<span class="mvsh mono" data-mv-sh="'+id+'">'+moveShares(x,c.moves[id])+'</span>'+
+      '<button data-mv-x="'+id+'" aria-label="Remove">×</button></div>';
+  }).join("")+'</div>';
+}
+function moveShares(x,n){
+  if(!(x.s.price>0)||!isFinite(n)||Math.abs(n)<1) return "—";
+  return (n<0?"−":"+")+Math.round(Math.abs(n)/x.s.price)+" sh";
 }
 function planBand(t,T2){ return Math.max(500, t/100*T2*0.02); }
 /* fresh money into the OTHER holdings that brings this one inside the band, no sale */
@@ -679,13 +704,8 @@ function planDilute(inv,t,T2){
   const need=Math.min(inv/r/1.02, Math.max((inv-500)/r,0));
   return need>T2?need-T2:0;
 }
-function planRowAct(x,t,T2,inv,sim){
+function planRowAct(x,t,T2,inv){
   if(!isFinite(t)||t<=0) return '<span class="dim">set tgt</span>';
-  if(sim){
-    const n=x.s.price>0?Math.round(Math.abs(sim.amt)/x.s.price)+' sh · ':'';
-    return '<b class="'+(sim.amt>0?"gain":"loss")+'">'+(sim.amt>0?"+":"−")+rupee(sim.amt)+'</b>'+
-      '<div class="shs">'+n+'matched</div>';
-  }
   const d=t/100*T2-inv;
   if(Math.abs(d)<planBand(t,T2)) return '<span class="dim">on target</span>';
   const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
@@ -701,20 +721,20 @@ function planHTML(core){
   let sumT=0, sumDelta=0, rows="";
   const list=[...core].sort((a,b)=>a.s.name.localeCompare(b.s.name));
   for(const x of list){
-    const t=planT(x), bb=planB(x), sim=c.sim&&c.sim.id===x.id?c.sim:null;
-    const inv=x.h.inv+(sim?sim.amt:0);
+    const t=planT(x), bb=planB(x), mv=c.moves[x.id];
+    const inv=x.h.inv+(mv||0);
     const now=T2>0?inv/T2*100:0;
     if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-inv; }
     const tv=targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:"");
     const bv=buyDraft[x.id]!==undefined?esc(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:"");
-    rows+='<tr data-id="'+x.id+'"'+(sim?' class="simrow"':'')+'>'+
+    rows+='<tr data-id="'+x.id+'"'+(mv!==undefined?' class="simrow"':'')+'>'+
       '<th scope="row" data-sim="'+x.id+'" title="'+esc(x.s.name)+'"><span>'+esc(x.s.name)+'</span></th>'+
       '<td><input inputmode="decimal" value="'+bv+'" data-plan-b aria-label="Buy if below"></td>'+
       '<td class="mono num" data-role="cmp">'+priceShort(x.s.price||0)+'</td>'+
       '<td data-role="ub">'+buyChip(x.s.price,bb)+'</td>'+
       '<td><input inputmode="decimal" value="'+tv+'" data-plan-t aria-label="Target allocation %"></td>'+
       '<td data-role="now">'+allocChip(now,t)+'</td>'+
-      '<td class="act" data-role="act">'+planRowAct(x,t,T2,inv,sim)+'</td></tr>';
+      '<td class="act" data-role="act">'+planRowAct(x,t,T2,inv)+'</td></tr>';
   }
   return '<div class="plan">'+
     '<h3>Rebalance</h3><div class="sub" data-role="sub">'+planSubHTML(c)+'</div>'+
@@ -722,12 +742,13 @@ function planHTML(core){
       '<button aria-pressed="'+(planMode==="add")+'" data-v="add">Adding</button>'+
       '<button aria-pressed="'+(planMode==="wd")+'" data-v="wd">Withdrawing</button></div>'+
       '<input id="planCash" inputmode="decimal" placeholder="₹ 0" value="'+esc(planAmt)+'"></div>'+
+    movesHTML(core,c)+
     '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(Math.abs(c.cash-sumDelta)<1?0:c.cash-sumDelta)+'</b></span></div>'+
     '</div>'+
     '<div class="ptwrap"><table class="pt"><thead><tr>'+
       '<th scope="col">Stock</th><th scope="col">Buy&nbsp;&lt;</th><th scope="col">CMP</th>'+
-      '<th scope="col">Buy?</th><th scope="col">Tgt</th><th scope="col" data-role="nowh">'+(c.cash||c.sim?"New":"Now")+'</th><th scope="col">Action</th>'+
+      '<th scope="col">Buy?</th><th scope="col">Tgt</th><th scope="col" data-role="nowh">'+(c.cash||c.put?"New":"Now")+'</th><th scope="col">Action</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /* ---------- flows ---------- */
@@ -796,7 +817,20 @@ function bindPlan(){
   const pc=$("#planCash");
   if(pc) pc.addEventListener("input",()=>{planAmt=pc.value; refreshPlan();});
   document.querySelectorAll("[data-sim]").forEach(th=>
-    th.addEventListener("click",()=>{planSim=planSim===th.dataset.sim?null:th.dataset.sim; refreshPlan();}));
+    th.addEventListener("click",()=>{
+      const id=th.dataset.sim;
+      if(planMoves[id]!==undefined){ delete planMoves[id]; }
+      else{
+        const core=corePool(), c=planCtx(core), x=core.find(k=>k.id===id), t=x?planT(x):NaN;
+        const seed=x&&isFinite(t)&&t>0&&t<100?Math.round(planMatch(x.h.inv,t,c.T2)):0;
+        planMoves[id]=String(seed);
+      }
+      render();
+    }));
+  document.querySelectorAll("[data-mv-i]").forEach(inp=>
+    inp.addEventListener("input",()=>{planMoves[inp.dataset.mvI]=inp.value; refreshPlan();}));
+  document.querySelectorAll("[data-mv-x]").forEach(b=>
+    b.addEventListener("click",()=>{delete planMoves[b.dataset.mvX]; render();}));
   document.querySelectorAll("[data-plan-t]").forEach(inp=>{
     const id=inp.closest("tr").dataset.id;
     inp.addEventListener("input",()=>{targetDraft[id]=inp.value; refreshPlan();});
@@ -815,20 +849,22 @@ function refreshPlan(){
   let sumT=0,sumDelta=0;
   document.querySelectorAll(".pt tbody tr").forEach(row=>{
     const id=row.dataset.id, x=core.find(k=>k.id===id); if(!x) return;
-    const t=planT(x), bb=planB(x), sim=c.sim&&c.sim.id===id?c.sim:null;
-    const inv=x.h.inv+(sim?sim.amt:0);
+    const t=planT(x), bb=planB(x), mv=c.moves[id];
+    const inv=x.h.inv+(mv||0);
     const now=T2>0?inv/T2*100:0;
     if(isFinite(t)&&t>0){ sumT+=t; sumDelta+=t/100*T2-inv; }
-    row.classList.toggle("simrow",!!sim);
     row.querySelector('[data-role="cmp"]').textContent=priceShort(x.s.price||0);
     row.querySelector('[data-role="ub"]').innerHTML=buyChip(x.s.price,bb);
     row.querySelector('[data-role="now"]').innerHTML=allocChip(now,t);
-    row.querySelector('[data-role="act"]').innerHTML=planRowAct(x,t,T2,inv,sim);
+    row.querySelector('[data-role="act"]').innerHTML=planRowAct(x,t,T2,inv);
+  });
+  document.querySelectorAll("[data-mv-sh]").forEach(el=>{
+    const x=core.find(k=>k.id===el.dataset.mvSh); if(x) el.textContent=moveShares(x,c.moves[x.id]);
   });
   const sb=document.querySelector('[data-role="sub"]'); if(sb) sb.innerHTML=planSubHTML(c);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
   const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(Math.abs(c.cash-sumDelta)<1?0:c.cash-sumDelta);
-  const nh=document.querySelector('[data-role="nowh"]'); if(nh) nh.textContent=(c.cash||c.sim)?"New":"Now";
+  const nh=document.querySelector('[data-role="nowh"]'); if(nh) nh.textContent=(c.cash||c.put)?"New":"Now";
 }
 function delStock(id,btn){
   if(btn.dataset.armed!=="1"){ btn.dataset.armed="1"; btn.textContent="Sure?"; setTimeout(()=>{btn.dataset.armed="";btn.textContent="Delete";},2500); return; }

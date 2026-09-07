@@ -178,6 +178,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 
 .netrow{margin-top:9px;padding-top:10px;border-top:1px solid var(--line2);font-size:12px;line-height:1.5}
 .netrow .dim{display:inline}
+.nodil{margin-top:7px;padding:7px 9px;border-radius:9px;background:var(--gold-soft);color:var(--gold);font-size:11.5px;line-height:1.45}
+.nodil b{font-weight:600}
 /* plan table */
 .ptwrap{margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);
   border:1px solid var(--line2);border-radius:14px;box-shadow:var(--card-shadow)}
@@ -198,6 +200,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .pt .act{white-space:nowrap;min-width:88px;padding-right:12px;line-height:1.25}
 .pt .act b{font-weight:600;font-size:11.5px}
 .pt .shs{font-size:9.5px;color:var(--muted)}
+.pt .dil{font-size:9.5px;color:var(--gold);margin-top:1px}
 .dim{color:var(--faint);font-size:10.5px}
 /* buy-price verdict: green when the market has come to your price, clearly legible when it has not */
 .ub{display:inline-block;font-size:10px;font-weight:700;padding:3px 6px;border-radius:6px;white-space:nowrap;letter-spacing:.02em}
@@ -296,6 +299,7 @@ const $=s=>document.querySelector(s);
 const inr0=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0});
 const inr2=new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
 const rupee=n=>"₹"+inr0.format(Math.round(Math.abs(n)));
+const compactR=n=>{const a=Math.abs(n);return a>=1e7?"₹"+(a/1e7).toFixed(2)+"Cr":a>=1e5?"₹"+(a/1e5).toFixed(1)+"L":a>=1000?"₹"+Math.round(a/1000)+"k":"₹"+Math.round(a);};
 const price=n=>"₹"+(Number.isInteger(n)?inr0.format(n):inr2.format(n));
 const sgn=n=>n>0?"+":(n<0?"−":"");
 const smoney=n=>sgn(n)+rupee(n);
@@ -648,11 +652,15 @@ function planRowAct(x,t,T2){
   const d=t/100*T2-x.h.inv;
   if(Math.abs(d)<Math.max(1,T2*0.005)) return '<span class="dim">on target</span>';
   const sh=x.s.price>0?Math.round(Math.abs(d)/x.s.price):0;
+  const dil=d<0?planDilute(x.h.inv,t,T2):0;   /* the no-sale route */
   return '<b class="'+(d>0?"gain":"loss")+'">'+(d>0?"+":"−")+rupee(d)+'</b>'+
-    (sh?'<div class="shs">'+sh+' sh</div>':"");
+    (sh?'<div class="shs">'+sh+' sh</div>':"")+
+    (dil>0?'<div class="dil">or +'+compactR(dil)+' in others</div>':"");
 }
+/* fresh money into the OTHER holdings that dilutes this one to target with no sale */
+function planDilute(inv,t,T2){ const need=inv/(t/100); return need>T2?need-T2:0; }
 /* trims release cash that funds the top-ups - show that, and what is left over */
-function netHTML(sell,buy,cash){
+function netHTML(sell,buy,cash,dil){
   if(sell<1&&buy<1) return '<span class="dim">Set targets to see what to buy or trim.</span>';
   const fresh=Math.max(0,buy-sell);          /* needs new money */
   const spare=Math.max(0,sell-buy);          /* trims release more than the top-ups need */
@@ -664,21 +672,24 @@ function netHTML(sell,buy,cash){
   } else if(sell>=1){ tail=' · nothing to add, '+rupee(sell)+' freed up'; }
   else { tail=' · '+rupee(Math.max(0,buy-cash))+(buy-cash>0?' beyond the cash you entered':' covered by the cash you entered'); }
   return '<span class="loss">Trim '+rupee(sell)+'</span> → <span class="gain">Add '+rupee(buy)+'</span>'+
-    '<span class="dim">'+esc(tail)+'</span>';
+    '<span class="dim">'+esc(tail)+'</span>'+
+    (dil>0?'<div class="nodil">No selling: add <b class="mono">'+rupee(dil)+'</b> more to the rest and the over-weight names dilute down to target.</div>':"");
 }
 function planHTML(core){
   if(!core.length) return '<div class="empty"><b>Nothing to plan</b>Add core holdings first.</div>';
   const coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
   const T2=coreInv+cash;
-  let sumT=0, sumDelta=0, sellSum=0, buySum=0, rows="";
+  let sumT=0, sumDelta=0, sellSum=0, buySum=0, dilMax=0, rows="";
   const list=[...core].sort((a,b)=>a.s.name.localeCompare(b.s.name));
   for(const x of list){
     const t=targetDraft[x.id]!==undefined?parseFloat(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:NaN);
     const bb=buyDraft[x.id]!==undefined?parseFloat(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:NaN);
     const now=coreInv>0?x.h.inv/coreInv*100:0;
     if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
-      if(Math.abs(d)>=Math.max(1,T2*0.005)){ if(d>0) buySum+=d; else sellSum+=-d; } }
+      if(Math.abs(d)>=Math.max(1,T2*0.005)){
+        if(d>0) buySum+=d;
+        else { sellSum+=-d; dilMax=Math.max(dilMax,planDilute(x.h.inv,t,T2)); } } }
     const tv=targetDraft[x.id]!==undefined?esc(targetDraft[x.id]):(isFinite(x.s.target)&&x.s.target!==null?x.s.target:"");
     const bv=buyDraft[x.id]!==undefined?esc(buyDraft[x.id]):(isFinite(x.s.buyBelow)&&x.s.buyBelow!==null?x.s.buyBelow:"");
     rows+='<tr data-id="'+x.id+'">'+
@@ -698,7 +709,7 @@ function planHTML(core){
       '<input id="planCash" inputmode="decimal" placeholder="₹ 0" value="'+esc(planAmt)+'"></div>'+
     '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(cash-sumDelta)+'</b></span></div>'+
-    '<div class="netrow" data-role="net">'+netHTML(sellSum,buySum,cash)+'</div>'+
+    '<div class="netrow" data-role="net">'+netHTML(sellSum,buySum,cash,dilMax)+'</div>'+
     '</div>'+
     '<div class="ptwrap"><table class="pt"><thead><tr>'+
       '<th scope="col">Stock</th><th scope="col">Buy&nbsp;&lt;</th><th scope="col">CMP</th>'+
@@ -788,14 +799,16 @@ function refreshPlan(){
   const core=corePool(), coreInv=totals(core).inv;
   const amt=parseFloat(planAmt), cash=(isFinite(amt)?amt:0)*(planMode==="wd"?-1:1);
   const T2=coreInv+cash;
-  let sumT=0,sumDelta=0,sellSum=0,buySum=0;
+  let sumT=0,sumDelta=0,sellSum=0,buySum=0,dilMax=0;
   document.querySelectorAll(".pt tbody tr").forEach(row=>{
     const id=row.dataset.id, x=core.find(c=>c.id===id); if(!x) return;
     const t=parseFloat(row.querySelector("[data-plan-t]").value);
     const bb=parseFloat(row.querySelector("[data-plan-b]").value);
     const now=coreInv>0?x.h.inv/coreInv*100:0;
     if(isFinite(t)&&t>0){ const d=t/100*T2-x.h.inv; sumT+=t; sumDelta+=d;
-      if(Math.abs(d)>=Math.max(1,T2*0.005)){ if(d>0) buySum+=d; else sellSum+=-d; } }
+      if(Math.abs(d)>=Math.max(1,T2*0.005)){
+        if(d>0) buySum+=d;
+        else { sellSum+=-d; dilMax=Math.max(dilMax,planDilute(x.h.inv,t,T2)); } } }
     row.querySelector('[data-role="cmp"]').textContent=priceShort(x.s.price||0);
     row.querySelector('[data-role="ub"]').innerHTML=buyChip(x.s.price,bb);
     row.querySelector('[data-role="now"]').innerHTML=allocChip(now,t);
@@ -804,7 +817,7 @@ function refreshPlan(){
   const t2=document.querySelector('[data-role="t2"]'); if(t2) t2.textContent=rupee(T2);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
   const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(cash-sumDelta);
-  const nt=document.querySelector('[data-role="net"]'); if(nt) nt.innerHTML=netHTML(sellSum,buySum,cash);
+  const nt=document.querySelector('[data-role="net"]'); if(nt) nt.innerHTML=netHTML(sellSum,buySum,cash,dilMax);
 }
 function delStock(id,btn){
   if(btn.dataset.armed!=="1"){ btn.dataset.armed="1"; btn.textContent="Sure?"; setTimeout(()=>{btn.dataset.armed="";btn.textContent="Delete";},2500); return; }

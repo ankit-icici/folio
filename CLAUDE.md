@@ -20,8 +20,14 @@ The backend `/exec` URL is hardcoded as `BACKEND` at the top of the `<script>` i
 
 - `index.html` — the entire app: state, FIFO maths, rendering, sheets, auth, sync, quote polling
 - `relay/Code.gs` — copy of the Apps Script backend (deploy target, not built from here)
-- `sw.js` — offline shell cache. **Bump the `CACHE` constant on every release** or returning
-  users keep the old app.
+- `sw.js` — offline shell cache. **Bump `CACHE` on every release, and `BUILD` in `index.html`
+  to the same `vN`.** They are the update mechanism, not decoration: the page fetches `sw.js`
+  with `no-store` on launch, on every return to the foreground, and every 10 min, and reloads
+  itself when the two disagree. Leave them out of step and either nothing updates or the app
+  reload-loops (a `sessionStorage` guard caps it at one reload per build per session).
+  `BUILD` is shown at the bottom of the Account sheet — ask for it first when the user reports
+  a shipped feature as missing; an installed PWA that is only resumed never re-fetches the page,
+  which is exactly how one release went unseen.
 - `manifest.webmanifest`, `icon-*.png` — PWA install metadata
 
 ## Architecture
@@ -112,7 +118,7 @@ one place that computes it (core invested + the cash box + any single-stock matc
 
 ```bash
 # 1. edit index.html
-# 2. bump CACHE in sw.js  (folio-vN -> folio-vN+1)
+# 2. bump BOTH: CACHE in sw.js and BUILD in index.html (folio-vN -> folio-vN+1)
 git add -A && git commit -m "..." && git push
 # 3. Pages goes live ~45 s later; verify with a grep for something new:
 curl -s https://ankit-icici.github.io/folio/ | grep -c '<new marker>'

@@ -270,8 +270,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .picked .sym,.sugr .sym{font-size:11px;color:var(--muted);letter-spacing:.04em}
 .secthead.rh{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .secthead.rh .linky{font-size:10px;letter-spacing:.1em;text-transform:uppercase}
-.rmx{flex:none;margin-left:6px;width:28px;height:28px;border:0;border-radius:50%;background:none;
-  color:var(--faint);font-size:17px;line-height:1;cursor:pointer}
+.rmx{flex:none;margin-left:8px;width:30px;height:30px;border:1px solid var(--line);border-radius:50%;
+  background:var(--surface2);color:var(--muted);font-size:16px;line-height:1;cursor:pointer}
 .rmx:active{background:var(--surface2);color:var(--loss)}
 .err{font-size:12.5px;color:var(--loss);margin-top:8px;display:none}
 .linky{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid var(--gold-soft)}
@@ -320,6 +320,7 @@ let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day";
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
+const BUILD="v33";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -448,12 +449,36 @@ async function pollQuotes(){
 }
 setInterval(pollQuotes,15000);
 setInterval(()=>{ if(!document.hidden&&AUTH&&ready) renderHeroOnly(); },5000);
+setTimeout(()=>checkBuild(),20000); setInterval(()=>{ if(!document.hidden) checkBuild(); },600000);
 document.addEventListener("visibilitychange",async()=>{
   if(document.hidden) return;
   /* re-sync after being backgrounded so a stale tab never overwrites newer data */
   if(AUTH&&!sheetOpen&&Date.now()-lastLoadAt>120000){ await loadRemote(); safeRender(); }
   pollQuotes();
+  checkBuild();
 });
+/* An installed PWA that is only resumed never re-fetches index.html, so it can sit
+   on an old build for days. Compare the served build with ours and reload. */
+let newBuild=null, buildAt=0;
+async function checkBuild(){
+  if(newBuild||Date.now()-buildAt<60000) return;
+  buildAt=Date.now();
+  try{
+    const t=await fetch("./sw.js?cb="+Date.now(),{cache:"no-store"}).then(r=>r.text());
+    const m=t.match(/folio-(v\d+)/);
+    if(!m||m[1]===BUILD) return;
+    newBuild=m[1];
+    /* reload at most once a session, so a stale CDN copy can never loop */
+    let done=false; try{ done=sessionStorage.getItem("folio_upd")===newBuild; }catch(e){}
+    if(!done&&!sheetOpen&&!/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||"")){
+      try{ sessionStorage.setItem("folio_upd",newBuild); }catch(e){}
+      location.reload(); return;
+    }
+    const st=$("#status");
+    if(st){ st.style.display="block"; st.innerHTML='A newer version is ready. <button class="linky" id="upNow">Reload</button>';
+      const b=$("#upNow"); if(b) b.addEventListener("click",()=>location.reload()); }
+  }catch(e){}
+}
 
 /* ---------- FIFO computations ---------- */
 function stockTxns(sid){
@@ -1301,7 +1326,8 @@ function cfgSheet(){
     '<p class="hint" style="margin-top:6px">Optional. A file you can keep anywhere as your own backup.</p>'+
     '<div class="secthead">Danger</div>'+
     '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete my account and data</button>'+
-    '<div class="err" id="sErr"></div>');
+    '<div class="err" id="sErr"></div>'+
+    '<p class="hint" style="margin-top:16px;text-align:center">Build <span class="mono">'+BUILD+'</span></p>');
   $("#sOut").addEventListener("click",signOut);
   $("#sHist").addEventListener("click",restoreSheet);
   $("#sDel").addEventListener("click",async e=>{

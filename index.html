@@ -268,6 +268,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .sugr.on{background:var(--gold-soft)}
 .sugr .nw{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picked .sym,.sugr .sym{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.secthead.rh{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.secthead.rh .linky{font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+.rmx{flex:none;margin-left:6px;width:28px;height:28px;border:0;border-radius:50%;background:none;
+  color:var(--faint);font-size:17px;line-height:1;cursor:pointer}
+.rmx:active{background:var(--surface2);color:var(--loss)}
 .err{font-size:12.5px;color:var(--loss);margin-top:8px;display:none}
 .linky{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid var(--gold-soft)}
 
@@ -917,13 +922,21 @@ function rememberSearch(sym,name){
     localStorage.setItem("nivesh_recent_"+AUTH.u,JSON.stringify(list.slice(0,12)));
   }catch(e){}
 }
-function rowHTML(sym,name,held,when){
+function forgetSearch(sym){
+  try{ localStorage.setItem("nivesh_recent_"+AUTH.u,JSON.stringify(recents().filter(x=>x.s!==sym))); }catch(e){}
+}
+function forgetAllSearches(){
+  try{ localStorage.removeItem("nivesh_recent_"+AUTH.u); }catch(e){}
+}
+function rowHTML(sym,name,held,when,rm){
   const e=symExch(sym);
   return '<div class="fr" data-sym="'+esc(sym)+'" data-name="'+esc(name)+'"><div class="fl">'+
     '<div class="fn"><span class="nw">'+esc(name)+'</span>'+(held?'<span class="tag s">HELD</span>':'')+
     (e?'<span class="tag b">'+e+'</span>':'')+'</div>'+
     '<div class="fs mono">'+esc(symRoot(sym))+(when?' · '+esc(when):'')+'</div></div>'+
-    '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div></div>';
+    '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div>'+
+    (rm?'<button class="rmx" data-rm="'+esc(sym)+'" aria-label="Remove '+esc(name)+' from recent searches">×</button>':"")+
+    '</div>';
 }
 async function priceRows(scope){
   const rows=[...document.querySelectorAll(scope+" [data-sym]")];
@@ -945,8 +958,14 @@ function recentHTML(){
   const r=recents();
   if(!r.length) return '<p class="hint">Type at least two letters.</p>';
   const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
-  return '<div class="secthead" style="margin-top:14px">Recently searched</div>'+
-    r.map(x=>rowHTML(x.s,x.n,held[x.s],ago(new Date(x.t).toISOString()))).join("");
+  return '<div class="secthead rh" style="margin-top:14px">Recently searched'+
+    '<button class="linky" id="qClear">Clear all</button></div>'+
+    r.map(x=>rowHTML(x.s,x.n,held[x.s],ago(new Date(x.t).toISOString()),true)).join("");
+}
+/* redraw the recents list in place after a removal */
+function redrawRecents(){
+  const el=$("#qOut"); if(!el) return;
+  el.innerHTML=recentHTML(); priceRows("#qOut");
 }
 
 /* look up any listed stock, in the portfolio or not */
@@ -995,6 +1014,9 @@ let tapsBound=false;
 function bindResultTaps(){
   if(tapsBound) return; tapsBound=true;
   $("#qOut").addEventListener("click",e=>{
+    const x=e.target.closest("[data-rm]");
+    if(x){ e.stopPropagation(); forgetSearch(x.dataset.rm); redrawRecents(); return; }
+    if(e.target.closest("#qClear")){ forgetAllSearches(); redrawRecents(); return; }
     const row=e.target.closest("[data-sym]"); if(!row) return;
     rememberSearch(row.dataset.sym,row.dataset.name);
     closeSheet(); addSheet(row.dataset.name,row.dataset.sym);

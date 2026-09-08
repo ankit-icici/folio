@@ -320,7 +320,7 @@ let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day";
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v33";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v34";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -520,7 +520,9 @@ function cashFlows(){
     const end=meta.history.end||"";
     const out=led.map(l=>({date:l.d,name:l.n,sym:l.s,side:l.b?"buy":"sell",qty:l.q,amt:l.v,approx:!!l.a}));
     for(const t of Object.values(txns)){
-      if(!t.date||t.date<=end||t.noLot) continue;
+      /* the cutoff exists to stop imported lots double-counting against the ledger;
+         a trade you typed in carries keep:1 and must show whatever its date */
+      if(!t.date||t.noLot||(t.date<=end&&!t.keep)) continue;
       const s=stocks[t.stockId]||{};
       out.push({date:t.date,name:s.name||"?",sym:s.symbol||"",side:t.side,qty:t.qty,amt:t.qty*t.price});
     }
@@ -1113,7 +1115,7 @@ function addSheet(preName,preSym){
     if(!name||!(qty>0)||!(p>0)) return showErr("#fErr","Name, quantity and buy price are required.");
     const sid=uid();
     stocks[sid]={name,symbol:sym,pool,price:p,prevClose:p,target:null,createdAt:Date.now()};
-    txns[uid()]={stockId:sid,side:"buy",qty,price:p,date,seq:Date.now()};
+    txns[uid()]={stockId:sid,side:"buy",qty,price:p,date,seq:Date.now(),keep:1};
     saveRemote(); closeSheet(); tab=pool==="ipo"?"ipo":"core"; setTab(tab); pollQuotes();
   });
 }
@@ -1209,7 +1211,7 @@ function txnSheet(id,side){
     const qty=parseFloat($("#tQty").value), p=parseFloat($("#tPrice").value), date=$("#tDate").value||today();
     if(!(qty>0)||!(p>0)) return showErr("#tErr","Enter quantity and price.");
     if(cur==="sell"&&qty>holding(id).qty) return showErr("#tErr","You hold only "+holding(id).qty+".");
-    txns[uid()]={stockId:id,side:cur,qty,price:p,date,seq:Date.now()};
+    txns[uid()]={stockId:id,side:cur,qty,price:p,date,seq:Date.now(),keep:1};
     saveRemote(); closeSheet();
   });
 }

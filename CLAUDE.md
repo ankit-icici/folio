@@ -68,6 +68,11 @@ Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n
   dashboard, excluded from allocation % and the rebalance plan.
 - `noLot:true` — a ledger record that must show in Flows but must NOT create/consume a lot
   (imported sells whose effect is already baked into the imported holdings). `holding()` skips them.
+- `keep:1` — a transaction the user typed in. Flows ignores in-app txns dated on or before
+  `history.end` so the imported lots do not double-count against the ledger; `keep:1` exempts a
+  hand-entered trade from that cutoff. **Set it on every txn any sheet creates, never on an
+  imported one.** Without it, a backdated entry silently vanishes from Flows and CAGR while
+  still driving P&L - that is how a 17 Aug 2026 sale went missing.
 - `closed:true` — fully exited position: hidden from lists, still present in Flows history.
 - Holdings use **FIFO**: sells consume oldest lots first. `holding()` is the single source of
   truth for qty / invested / avg / P&L — don't recompute elsewhere.

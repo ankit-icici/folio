@@ -1,3 +1,11 @@
+/* ------------------------------------------------------------------------
+   STALE TEMPLATE - do not treat as the live backend.
+
+   The deployed script is the source of truth. It has moved well past this
+   file (per-account login, snapshots, `search`, index symbols, the exchange
+   suffix rule). Read the live code in the Apps Script editor before changing
+   anything; see CLAUDE.md > Relay for the project id and the deploy steps.
+   ------------------------------------------------------------------------ */
 // Folio multi-user backend (v4) — deploy on YOUR OWN Google account to host
 // your own instance (script.google.com → paste → Deploy → Web app →
 // Execute as: Me → Who has access: Anyone → Authorize).
@@ -82,7 +90,7 @@ function doGet(e){
     var out2={},missing=[],c=cache_();
     syms.forEach(function(s){var v=c.get('q:'+s);if(v){out2[s]=JSON.parse(v);}else{missing.push(s);}});
     if(missing.length){
-      var reqs=missing.map(function(s){return {url:'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+'.NS?interval=1d&range=5d',muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}};});
+      var reqs=missing.map(function(s){return {url:'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+(s.charAt(0)==='^'||s.indexOf('.')>0?'':'.NS')+'?interval=1d&range=5d',muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}};});
       try{
         var rs=UrlFetchApp.fetchAll(reqs);
         rs.forEach(function(r,i){

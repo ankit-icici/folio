@@ -256,6 +256,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .ghost{width:100%;margin-top:10px;padding:12px 0;border-radius:999px;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink)}
 .secthead{margin-top:22px;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
 .hint{font-size:12px;color:var(--muted);margin-top:8px}
+.picked{margin-top:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;
+  padding:9px 11px;border-radius:11px;background:var(--gold-soft);color:var(--ink)}
+.picked .ok{color:var(--gain);font-weight:700}
+.picked .pl{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--gold)}
+.picked.no{background:var(--surface2);color:var(--muted);font-size:12px}
+.sug{margin-top:9px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.sugr{width:100%;text-align:left;display:flex;align-items:center;gap:8px;padding:10px 12px;
+  background:var(--surface2);border:0;border-top:1px solid var(--line);font:inherit;font-size:13px;color:var(--ink)}
+.sugr:first-child{border-top:0}
+.sugr.on{background:var(--gold-soft)}
+.sugr .nw{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picked .sym,.sugr .sym{font-size:11px;color:var(--muted);letter-spacing:.04em}
 .err{font-size:12.5px;color:var(--loss);margin-top:8px;display:none}
 .linky{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid var(--gold-soft)}
 
@@ -514,6 +526,14 @@ function xirr(){
   return {rate:r*100,years,since:first};
 }
 const corePool=()=>all().filter(x=>x.s.pool!=="ipo");
+/* a symbol carries its exchange only when it is not NSE: "SONALAD.BO" */
+const symRoot=y=>String(y||"").replace(/\.(BO|NS)$/,"");
+const symExch=y=>/\.BO$/.test(String(y||""))?"BSE":"";
+function symHTML(y){
+  if(!y) return "";
+  const e=symExch(y);
+  return '<span class="sym mono">'+esc(symRoot(y))+'</span>'+(e?'<span class="tag b">'+e+'</span>':"");
+}
 
 /* ---------- render ---------- */
 function shellHTML(){
@@ -617,7 +637,7 @@ function cardHTML(x,coreInv){
   const alloc=isCore&&coreInv>0?(h.inv/coreInv*100).toFixed(1)+"%":"—";
   return '<div class="card" data-id="'+id+'">'+
     '<div class="chead"><div class="t">'+esc(s.name)+'</div>'+
-      (s.symbol?'<span class="sym mono">'+esc(s.symbol)+'</span>':"")+'<span class="sp"></span>'+
+      symHTML(s.symbol)+'<span class="sp"></span>'+
       '<span class="dpill mono '+(h.day>=0?"g":"l")+'">'+spct(h.dayPct)+'</span></div>'+
     '<div class="g9 mono">'+
       kv("Qty",h.qty)+
@@ -898,9 +918,11 @@ function rememberSearch(sym,name){
   }catch(e){}
 }
 function rowHTML(sym,name,held,when){
+  const e=symExch(sym);
   return '<div class="fr" data-sym="'+esc(sym)+'" data-name="'+esc(name)+'"><div class="fl">'+
-    '<div class="fn"><span class="nw">'+esc(name)+'</span>'+(held?'<span class="tag s">HELD</span>':'')+'</div>'+
-    '<div class="fs mono">'+esc(sym)+(when?' · '+esc(when):'')+'</div></div>'+
+    '<div class="fn"><span class="nw">'+esc(name)+'</span>'+(held?'<span class="tag s">HELD</span>':'')+
+    (e?'<span class="tag b">'+e+'</span>':'')+'</div>'+
+    '<div class="fs mono">'+esc(symRoot(sym))+(when?' · '+esc(when):'')+'</div></div>'+
     '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div></div>';
 }
 async function priceRows(scope){
@@ -980,24 +1002,67 @@ function bindResultTaps(){
 }
 
 /* add stock */
+let addTimer=null, addSeq=0;
 function addSheet(preName,preSym){
+  let pool="core", pick=preSym?{s:preSym,n:preName||""}:null, list=[];
   openSheet("Add stock",
     '<div class="togg full" id="poolT"><button aria-pressed="true" data-v="core">Core</button><button aria-pressed="false" data-v="ipo">'+POOL2+'</button></div>'+
-    '<div class="f"><label>Name</label><input id="fName" placeholder="e.g. HDFC Bank" autocomplete="off" value="'+esc(preName||"")+'"></div>'+
-    '<div class="f2"><div class="f"><label>NSE symbol</label><input id="fSym" class="mono" placeholder="HDFCBANK" autocapitalize="characters" autocomplete="off" value="'+esc(preSym||"")+'"></div>'+
-    '<div class="f"><label>Date</label><input id="fDate" type="date" value="'+today()+'"></div></div>'+
+    '<div class="f"><label>Stock</label><input id="fName" placeholder="Start typing a company name" autocomplete="off" autocapitalize="words" value="'+esc(preName||"")+'"></div>'+
+    '<div id="fPick"></div><div id="fSug"></div>'+
     '<div class="f2"><div class="f"><label>Quantity</label><input id="fQty" class="mono" inputmode="numeric"></div>'+
     '<div class="f"><label>Buy price</label><input id="fPrice" class="mono" inputmode="decimal"></div></div>'+
+    '<div class="f"><label>Date</label><input id="fDate" type="date" value="'+today()+'"></div>'+
     '<div class="err" id="fErr"></div>'+
     '<button class="primary" id="fGo">Add</button>'+
     '<div style="text-align:center;margin-top:12px"><button class="linky" id="impBtn">Import holdings (paste rows / CSV)</button></div>');
-  let pool="core";
+
+  const drawPick=()=>{
+    const el=$("#fPick"); if(!el) return;
+    if(pick) el.innerHTML='<div class="picked"><span class="ok">✓</span> <b>'+esc(pick.n)+'</b>'+symHTML(pick.s)+
+      '<span class="pl">live prices</span></div>';
+    else el.innerHTML=$("#fName").value.trim()
+      ? '<div class="picked no">No match picked — prices stay manual</div>' : "";
+  };
+  const drawSug=()=>{
+    const el=$("#fSug"); if(!el) return;
+    if(!list.length){ el.innerHTML=""; return; }
+    el.innerHTML='<div class="sug">'+list.slice(0,6).map(r=>
+      '<button class="sugr'+(pick&&pick.s===r.s?" on":"")+'" data-pick="'+esc(r.s)+'">'+
+      '<span class="nw">'+esc(r.n)+'</span>'+symHTML(r.s)+'</button>').join("")+'</div>';
+    el.querySelectorAll("[data-pick]").forEach(b=>b.addEventListener("click",()=>{
+      pick=list.find(r=>r.s===b.dataset.pick)||null;
+      if(pick){ $("#fName").value=pick.n; rememberSearch(pick.s,pick.n); }
+      drawPick(); drawSug();
+    }));
+  };
+  const lookup=async q=>{
+    const mine=++addSeq;
+    try{
+      const j=await fetch(api("action=search&q="+encodeURIComponent(q))).then(r=>r.json());
+      if(mine!==addSeq) return;
+      list=j.results||[];
+    }catch(e){ if(mine===addSeq){ list=[]; } }
+    if(mine!==addSeq) return;
+    /* the best match is adopted for you; tap another row to override it */
+    pick=list.length?list[0]:null;
+    drawPick(); drawSug();
+  };
+  drawPick();
+  $("#fName").addEventListener("input",()=>{
+    const q=$("#fName").value.trim();
+    clearTimeout(addTimer); addSeq++;
+    pick=null; list=[]; drawSug(); drawPick();
+    if(q.length<2) return;
+    $("#fSug").innerHTML='<p class="hint">Looking up…</p>';
+    addTimer=setTimeout(()=>lookup(q),320);
+  });
+
   $("#poolT").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;pool=b.dataset.v;
     $("#poolT").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
   $("#impBtn").addEventListener("click",importSheet);
   $("#fGo").addEventListener("click",()=>{
-    const name=$("#fName").value.trim(), qty=parseFloat($("#fQty").value), p=parseFloat($("#fPrice").value);
-    const sym=$("#fSym").value.trim().toUpperCase()||null, date=$("#fDate").value||today();
+    const name=(pick?pick.n:$("#fName").value.trim()), qty=parseFloat($("#fQty").value), p=parseFloat($("#fPrice").value);
+    const sym=pick?pick.s:null, date=$("#fDate").value||today();
     if(!name||!(qty>0)||!(p>0)) return showErr("#fErr","Name, quantity and buy price are required.");
     const sid=uid();
     stocks[sid]={name,symbol:sym,pool,price:p,prevClose:p,target:null,createdAt:Date.now()};
@@ -1110,7 +1175,8 @@ function histSheet(id){
     '<div class="togg full" id="ePool"><button aria-pressed="'+(s.pool!=="ipo")+'" data-v="core">Core</button>'+
       '<button aria-pressed="'+(s.pool==="ipo")+'" data-v="ipo">'+POOL2+'</button></div>'+
     '<p class="hint" style="margin-top:6px">'+POOL2+' holdings count in the dashboard but stay out of allocation and the rebalance plan.</p>'+
-    '<div class="f"><label>NSE symbol (for live prices)</label><input id="eSym" class="mono" autocapitalize="characters" value="'+esc(s.symbol||"")+'" placeholder="e.g. HDFCBANK"></div>'+
+    '<div class="f"><label>Ticker (for live prices)</label><input id="eSym" class="mono" autocapitalize="characters" value="'+esc(s.symbol||"")+'" placeholder="e.g. HDFCBANK"></div>'+
+    '<p class="hint" style="margin-top:6px">NSE tickers are plain. A stock listed only on BSE needs its <b>.BO</b> suffix — e.g. <span class="mono">SONALAD.BO</span>. Adding a stock fills this in for you.</p>'+
     '<div class="f2"><div class="f"><label>Price (manual)</label><input id="ePr" class="mono" inputmode="decimal" value="'+(s.price||"")+'"></div>'+
     '<div class="f"><label>Prev close</label><input id="ePc" class="mono" inputmode="decimal" value="'+(s.prevClose||"")+'"></div></div>'+
     '<button class="primary" id="eGo">Save</button>'+

@@ -67,6 +67,14 @@ Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n
   truth for qty / invested / avg / P&L — don't recompute elsewhere.
 - Prices: `price` and `prevClose` drive day P&L; live polling every 15 s overwrites them for any
   stock with a `symbol`.
+- `symbol` carries its **exchange** only when it is not NSE. NSE is bare (`HDFCBANK`); a stock
+  listed only on BSE keeps its Yahoo suffix (`SONALAD.BO`); the two indices keep their caret
+  (`^NSEI`, `^BSESN`). The relay appends `.NS` only when the symbol has neither a caret nor a
+  dot, so all three round-trip through one code path. Use `symRoot()` / `symExch()` / `symHTML()`
+  to display one - never print the raw symbol.
+- Adding a stock resolves the ticker itself: the Add sheet is a typeahead over `action=search`
+  and adopts the top match (tap another row to override). There is no ticker field on that sheet;
+  the one in the Edit sheet stays, for corrections and for anything the feed cannot find.
 
 ### Rebalance maths (Plan tab)
 

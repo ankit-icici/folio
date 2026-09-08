@@ -126,8 +126,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .chips button{padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
 .chips button[aria-pressed="true"]{background:var(--btn);border-color:var(--btn);color:var(--btn-ink)}
 .flows{margin-top:12px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;box-shadow:var(--card-shadow);overflow:hidden}
-.frow{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px;border-top:1px solid var(--line2)}
-.frow:first-child{border-top:0}
+.mwrap{display:flex;align-items:center;border-top:1px solid var(--line2)}
+.mwrap:first-child{border-top:0}
+.mwrap.on{background:var(--gold-soft)}
+.msel{flex:none;width:21px;height:21px;margin:0 0 0 18px;border-radius:6px;border:1.5px solid var(--line);
+  background:var(--surface2);color:var(--gold);font-size:12px;font-weight:700;line-height:1;padding:0}
+.msel[aria-pressed="true"]{border-color:var(--gold);background:var(--gold-soft)}
+.frow{flex:1;min-width:0;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px 13px 12px}
+.ftot{margin-top:12px;padding:12px 16px;border:1px solid var(--gold);border-radius:14px;background:var(--gold-soft)}
+.ftot .ft1{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)}
+.ftot .ft1 b{font-size:19px;font-weight:600;color:var(--ink)}
+.ftot .ft2{display:flex;align-items:baseline;gap:6px;margin-top:5px;font-size:11.5px;color:var(--muted)}
+.ftot .ft2 .linky{margin-left:auto;font-size:10px;letter-spacing:.1em;text-transform:uppercase}
 .frow .m{width:84px;font-size:13px;font-weight:600}
 .frow .bar{flex:1;height:4px;border-radius:2px;background:var(--line2);overflow:hidden;position:relative}
 .frow .bar i{position:absolute;top:0;bottom:0;border-radius:2px}
@@ -317,10 +327,10 @@ let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
 const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
 let idx={};
-let tab="core", flowPeriod="all", openMonth=null, sortBy="day";
+let tab="core", flowPeriod="all", openMonth=null, sortBy="day", flowSel={};
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v34";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v35";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -819,15 +829,32 @@ function flowsHTML(){
     byM[m].rows.push(f);
   }
   const ms=Object.keys(byM).sort().reverse();
+  for(const m of Object.keys(flowSel)) if(!byM[m]) delete flowSel[m];   /* drop months this period hides */
   const chips='<div class="chips">'+["3m","6m","1y","all"].map(p=>
     '<button aria-pressed="'+(flowPeriod===p)+'" data-period="'+p+'">'+p.toUpperCase()+'</button>').join("")+"</div>";
   if(!ms.length) return chips+'<div class="empty"><b>No activity</b>Nothing in this period.</div>';
+
+  /* running total for whatever months are ticked */
+  const sel=ms.filter(m=>flowSel[m]);
+  let tot="";
+  if(sel.length){
+    let inn=0,out=0;
+    for(const m of sel) for(const f of byM[m].rows){ if(f.side==="sell") out+=f.amt; else inn+=f.amt; }
+    const net=out-inn;
+    tot='<div class="ftot"><div class="ft1"><span>'+sel.length+' month'+(sel.length>1?"s":"")+'</span>'+
+      '<b class="mono '+(net>0?"gain":"")+'">'+smoney(net)+'</b></div>'+
+      '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> bought · <span class="mono gain">+'+rupee(out)+'</span> sold'+
+      '<button class="linky" id="fClear">Clear</button></div></div>';
+  }
+
   const max=Math.max(...ms.map(m=>Math.abs(byM[m].net)));
-  return chips+'<div class="flows">'+ms.map(m=>{
-    const v=byM[m].net, w=max>0?Math.max(3,Math.abs(v)/max*100):0, open=openMonth===m;
-    return '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
+  return chips+tot+'<div class="flows">'+ms.map(m=>{
+    const v=byM[m].net, w=max>0?Math.max(3,Math.abs(v)/max*100):0, open=openMonth===m, on=!!flowSel[m];
+    return '<div class="mwrap'+(on?" on":"")+'">'+
+      '<button class="msel" data-msel="'+m+'" aria-pressed="'+on+'" aria-label="Include '+monthName(m)+' in the total">'+(on?"✓":"")+'</button>'+
+      '<button class="frow" data-month="'+m+'" aria-expanded="'+open+'"><div class="m">'+monthName(m)+'</div>'+
       '<div class="bar"><i class="'+(v>0?"ret":"in")+'" style="left:0;width:'+w+'%"></i></div>'+
-      '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button>'+
+      '<div class="a mono '+(v>0?"gain":"")+'">'+smoney(v)+'</div></button></div>'+
       (open?'<div class="mdet">'+byM[m].rows.sort((a,b)=>a.date<b.date?1:-1).map(t=>{
         const d=new Date(t.date+"T00:00:00");
         const dl=isNaN(d)?t.date:d.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
@@ -838,7 +865,7 @@ function flowsHTML(){
           '<div class="fa mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>';
       }).join("")+"</div>":"");
   }).join("")+"</div>"+
-  '<p class="hint" style="padding:0 4px">Your pocket’s view: money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions.</p>';
+  '<p class="hint" style="padding:0 4px">Money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions, tick the box to add it to a total.</p>';
 }
 
 /* ---------- events ---------- */
@@ -858,6 +885,11 @@ function bind(){
     b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
   document.querySelectorAll("[data-period]").forEach(b=>
     b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
+  document.querySelectorAll("[data-msel]").forEach(b=>
+    b.addEventListener("click",()=>{const m=b.dataset.msel;
+      if(flowSel[m]) delete flowSel[m]; else flowSel[m]=1; render();}));
+  const fc=$("#fClear");
+  if(fc) fc.addEventListener("click",()=>{flowSel={}; render();});
   document.querySelectorAll("[data-month]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
   bindPlan();

@@ -334,9 +334,10 @@ const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
 let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day", flowSel={};
 let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
+let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v36";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v37";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -872,6 +873,7 @@ function flowsHTML(){
   }
   const ms=Object.keys(byM).sort().reverse();
   for(const m of Object.keys(flowSel)) if(!byM[m]) delete flowSel[m];   /* drop months this period hides */
+  if(!flowTouched){ flowSel={}; for(const m of ms) flowSel[m]=1; }      /* whole period until you untick */
   const chips='<div class="chips">'+[["fy",fyLabel(0)],["pfy",fyLabel(1)],["cus","Custom"],["all","All"]].map(p=>
     '<button aria-pressed="'+(flowPeriod===p[0])+'" data-period="'+p[0]+'">'+p[1].toUpperCase()+'</button>').join("")+"</div>"+
     (flowPeriod==="cus"?customHTML():"");
@@ -879,16 +881,14 @@ function flowsHTML(){
 
   /* running total for whatever months are ticked */
   const sel=ms.filter(m=>flowSel[m]);
-  let tot="";
-  if(sel.length){
-    let inn=0,out=0;
-    for(const m of sel) for(const f of byM[m].rows){ if(f.side==="sell") out+=f.amt; else inn+=f.amt; }
-    const net=out-inn;
-    tot='<div class="ftot"><div class="ft1"><span>'+sel.length+' month'+(sel.length>1?"s":"")+'</span>'+
-      '<b class="mono '+(net>0?"gain":"")+'">'+smoney(net)+'</b></div>'+
-      '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> bought · <span class="mono gain">+'+rupee(out)+'</span> sold'+
-      '<button class="linky" id="fClear">Clear</button></div></div>';
-  }
+  let inn=0,out=0;
+  for(const m of sel) for(const f of byM[m].rows){ if(f.side==="sell") out+=f.amt; else inn+=f.amt; }
+  const net=out-inn;
+  const tot='<div class="ftot"><div class="ft1"><span>'+
+      (sel.length===ms.length?ms.length+' month'+(ms.length>1?"s":""):sel.length+' of '+ms.length+' months')+
+      '</span><b class="mono '+(net>0?"gain":"")+'">'+smoney(net)+'</b></div>'+
+    '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> bought · <span class="mono gain">+'+rupee(out)+'</span> sold'+
+    (flowTouched?'<button class="linky" id="fClear">All months</button>':"")+'</div></div>';
 
   const max=Math.max(...ms.map(m=>Math.abs(byM[m].net)));
   return chips+tot+'<div class="flows">'+ms.map(m=>{
@@ -908,7 +908,7 @@ function flowsHTML(){
           '<div class="fa mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>';
       }).join("")+"</div>":"");
   }).join("")+"</div>"+
-  '<p class="hint" style="padding:0 4px">Money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions, tick the box to add it to a total.</p>';
+  '<p class="hint" style="padding:0 4px">Money put into stocks shows as −, money back from sells as + in green. Tap a month for its transactions, untick one to leave it out of the total.</p>';
 }
 
 /* ---------- events ---------- */
@@ -927,17 +927,18 @@ function bind(){
   document.querySelectorAll("[data-sort]").forEach(b=>
     b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
   document.querySelectorAll("[data-period]").forEach(b=>
-    b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
+    b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;flowTouched=false;flowSel={};render();}));
   document.querySelectorAll("[data-cus]").forEach(sl=>
     sl.addEventListener("change",()=>{
       const g=r=>$('[data-cus="'+r+'y"]').value+"-"+$('[data-cus="'+r+'m"]').value;
-      flowA=g("a"); flowB=g("b"); openMonth=null; render();
+      flowA=g("a"); flowB=g("b"); openMonth=null; flowTouched=false; flowSel={}; render();
     }));
   document.querySelectorAll("[data-msel]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.msel;
+      flowTouched=true;
       if(flowSel[m]) delete flowSel[m]; else flowSel[m]=1; render();}));
   const fc=$("#fClear");
-  if(fc) fc.addEventListener("click",()=>{flowSel={}; render();});
+  if(fc) fc.addEventListener("click",()=>{flowTouched=false; flowSel={}; render();});
   document.querySelectorAll("[data-month]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
   bindPlan();

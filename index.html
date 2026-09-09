@@ -390,7 +390,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v43";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v44";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -906,23 +906,29 @@ const esopPx=()=>{const E=esops(); return isFinite(+E.cmp)&&+E.cmp>0?+E.cmp:esop
 /* the exercised shares as one pool - quantity, average exercise price, average grant price.
    Any of the three can be overridden from the dashboard; otherwise they come from the lots. */
 function esopPool(){
-  const E=esops(); let q=0,basis=0,gc=0;
+  const E=esops(); let q=0,basis=0,gc=0,pq=0;
   for(const l of Object.values(E.lots)){
-    const g=E.grants[l.gid]||{}, n=+l.qty||0;
-    q+=n; basis+=n*(+l.fmv||0); gc+=n*(+g.strike||0);
+    const g=E.grants[l.gid]||{}, n=+l.qty||0, fmv=+l.fmv||0, gp=+g.strike||0;
+    q+=n; basis+=n*fmv; gc+=n*gp;
+    /* the tax actually paid on that exercise - the rate differed year to year */
+    pq+=isFinite(+l.perq)&&+l.perq>=0?+l.perq:Math.max(0,n*(fmv-gp))*E.taxPerq/100;
   }
   const p=E.pool||{};
-  return {qty:isFinite(+p.qty)?+p.qty:q,
+  const qty=isFinite(+p.qty)?+p.qty:q;
+  return {qty,
           fmv:isFinite(+p.fmv)?+p.fmv:(q?basis/q:0),
-          gpx:isFinite(+p.gpx)?+p.gpx:(q?gc/q:0)};
+          gpx:isFinite(+p.gpx)?+p.gpx:(q?gc/q:0),
+          perq:isFinite(+p.perq)?+p.perq:(q?pq*qty/q:0)};
 }
 function esopSummary(){
   const E=esops(), P=esopPool(), cmp=esopPx();
   const value=P.qty*cmp;
   const cgTax=Math.max(0,P.qty*(cmp-P.fmv))*E.taxCg/100;
   const grantCost=P.qty*P.gpx;
-  const perqTax=Math.max(0,P.qty*(P.fmv-P.gpx))*E.taxPerq/100;
-  return {...P,cmp,value,cgTax,net:value-cgTax,grantCost,perqTax,
+  const perqTax=P.perq;
+  const spread=Math.max(0,P.qty*(P.fmv-P.gpx));
+  return {...P,cmp,value,cgTax,net:value-cgTax,grantCost,perqTax,spread,
+          perqRate:spread?perqTax/spread*100:0,
           pat:value-cgTax-grantCost-perqTax};
 }
 /* vested tranches that have not been exercised, by the year they vested.
@@ -1022,7 +1028,8 @@ function esopHTML(){
     tile("cmp","CMP",price(S.cmp),manual?"set by you · tap to edit":spct(dayPct)+" today")+
     tile("qty","Shares held",inr0.format(S.qty),"exercised")+
     tile("cg","Value after tax",rupee(S.net),"tax "+E.taxCg+"% on gain")+
-    tile("pq","Profit after tax",sgn(S.pat)+rupee(S.pat),"perquisite "+E.taxPerq+"%",cls(S.pat))+
+    tile("pq","Profit after tax",sgn(S.pat)+rupee(S.pat),
+      "perquisite "+S.perqRate.toFixed(1)+"%",cls(S.pat))+
     '</div></div>';
 
   /* 2 and 3 - two tables of options still to be exercised */
@@ -1137,23 +1144,41 @@ function esopEditSheet(which){
       esopWrite(E2=>{ delete E2.pool; }); closeSheet(); setTab("esop");});
     return;
   }
-  const isCg=which==="cg";
-  openSheet(isCg?"Tax on the gain":"Perquisite tax",
-    '<div class="f"><label>'+(isCg?"LTCG / STCG rate":"Perquisite tax rate")+'</label>'+
-      '<input id="xR" class="mono" inputmode="decimal" value="'+(isCg?E.taxCg:E.taxPerq)+'"></div>'+
-      pick("r",isCg?[12.5,20]:[31,34],isCg?E.taxCg:E.taxPerq)+
-    '<p class="hint" style="margin-top:8px">'+(isCg
-      ? "Charged on the rise since you exercised — 12.5% once a year has passed, 20% before that."
-      : "Charged as salary on the gap between the price when you exercised and the grant price.")+'</p>'+
-    '<button class="primary" id="xGo">Save</button>');
+  if(which==="cg"){
+    openSheet("Tax on the gain",
+      '<div class="f"><label>LTCG / STCG rate</label>'+
+        '<input id="xR" class="mono" inputmode="decimal" value="'+E.taxCg+'"></div>'+
+        pick("r",[12.5,20],E.taxCg)+
+      '<p class="hint" style="margin-top:8px">Charged on the rise since you exercised — 12.5% once a year has passed, 20% before that.</p>'+
+      '<button class="primary" id="xGo">Save</button>');
+    document.querySelectorAll("[data-pk]").forEach(b=>b.addEventListener("click",()=>{
+      $("#xR").value=b.dataset.v;
+      document.querySelectorAll("[data-pk]").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
+    $("#xGo").addEventListener("click",()=>{
+      const v=parseFloat($("#xR").value);
+      esopWrite(E2=>{ if(v>=0) E2.taxCg=v; }); closeSheet(); setTab("esop");});
+    return;
+  }
+  const S=esopSummary();
+  openSheet("Perquisite tax",
+    '<div class="f"><label>Tax you actually paid on exercise</label>'+
+      '<input id="xP" class="mono" inputmode="decimal" value="'+Math.round(S.perqTax)+'"></div>'+
+    '<p class="hint" style="margin-top:6px">That works out to <b>'+S.perqRate.toFixed(2)+'%</b> of the '+
+      rupee(S.spread)+' spread between the exercise price and the grant price. Your grants were taxed at '+
+      'different rates across the years, so the amount is kept rather than a single rate.</p>'+
+    '<div class="f"><label>Or apply one flat rate</label></div>'+
+      pick("r",[31,34],-1)+
+    '<button class="primary" id="xGo" style="margin-top:16px">Save</button>'+
+    '<button class="ghost" id="xReset" style="margin-top:12px">Recalculate from my exercises</button>');
   document.querySelectorAll("[data-pk]").forEach(b=>b.addEventListener("click",()=>{
-    $("#xR").value=b.dataset.v;
-    document.querySelectorAll("[data-pk]").forEach(x=>x.setAttribute("aria-pressed",x===b));
-  }));
+    $("#xP").value=Math.round(S.spread*(+b.dataset.v)/100);
+    document.querySelectorAll("[data-pk]").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
   $("#xGo").addEventListener("click",()=>{
-    const v=parseFloat($("#xR").value);
-    esopWrite(E2=>{ if(v>=0){ if(isCg) E2.taxCg=v; else E2.taxPerq=v; } });
+    const v=parseFloat($("#xP").value);
+    esopWrite(E2=>{ E2.pool={...(E2.pool||{}),...(v>=0?{perq:v}:{})}; });
     closeSheet(); setTab("esop");});
+  $("#xReset").addEventListener("click",()=>{
+    esopWrite(E2=>{ if(E2.pool) delete E2.pool.perq; }); closeSheet(); setTab("esop");});
 }
 /* recompute one open calculator without rebuilding the page under the keyboard */
 /* ---------- ESOP sheets ---------- */

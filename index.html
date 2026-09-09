@@ -98,8 +98,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .cagr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,178,116,.22)}
 .cagr .gain{color:#57D9A3}.cagr .loss{color:#F49790}
 
-.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
-.seg button{padding:9px 0;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.seg{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
+.seg button{padding:9px 0;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
 .seg button[aria-selected="true"]{background:var(--btn);color:var(--btn-ink)}
 
 .list{margin-top:16px;display:flex;flex-direction:column;gap:12px}
@@ -133,6 +133,24 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   background:var(--surface2);color:var(--gold);font-size:12px;font-weight:700;line-height:1;padding:0}
 .msel[aria-pressed="true"]{border-color:var(--gold);background:var(--gold-soft)}
 .frow{flex:1;min-width:0;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px 13px 12px}
+.ecard{margin-top:16px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;
+  box-shadow:var(--card-shadow);padding:16px 18px}
+.eh{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:600}
+.eh em{font-style:normal;font-size:11.5px;font-weight:600}
+.ekv{display:grid;grid-template-columns:1fr 1fr;gap:11px 10px;margin-top:13px}
+.efoot{border-top:1px solid var(--line);margin-top:14px;padding-top:12px;display:flex;
+  justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted)}
+.efoot b{font-weight:600;color:var(--ink)}
+.et{min-width:392px}
+.gvr{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:13px}
+.gvr:first-of-type{border-top:0}
+.gvr span:first-child{color:var(--muted)}
+.et .nod{color:var(--gold);font-weight:700;margin-left:3px}
+.vrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line2)}
+.vrow:first-child{border-top:0}
+.vrow .m{width:52px;font-size:13px;font-weight:600}
+.vrow .vg{flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow .a{font-size:13px;font-weight:600;text-align:right}
 .cus{margin-top:10px;display:flex;flex-direction:column;gap:7px}
 .cusr{display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center}
 .cusr span{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
@@ -331,13 +349,17 @@ const errMsg=c=>ERRS[c]||("Error: "+c);
 let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
 const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
+/* ESOPs are ICICI Bank shares, deliberately kept out of stocks{} - priced on their own */
+const ESOP_SYM="ICICIBANK";
+const esopOn=()=>!!(meta.esops&&(Object.keys(meta.esops.lots||{}).length||Object.keys(meta.esops.grants||{}).length));
+const esopSyms=()=>esopOn()?[ESOP_SYM]:[];
 let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day", flowSel={};
 let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v37";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v38";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -389,7 +411,7 @@ function saveRemote(force){
     try{
       const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
         body:JSON.stringify({action:"save",force:force===true,
-          data:{stocks,txns,...(meta.history?{history:meta.history}:{}),savedAt:new Date().toISOString()}})});
+          data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),savedAt:new Date().toISOString()}})});
       const j=await r.json(); pendingSave=!j.saved;
       if(j.error==="suspicious_save"){
         const st=$("#status");
@@ -404,15 +426,17 @@ let lastLoadAt=0;
 async function loadRemote(){
   if(!AUTH) return false;
   try{
-    const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))].concat(INDICES.map(i=>i.s));
+    const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean).concat(esopSyms()))].concat(INDICES.map(i=>i.s));
     const r=await fetch(api("action=load&symbols="+syms.join(",")));
     const j=await r.json();
     if(j.error){ ready=true; live=false; sync="off"; return false; }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
-      if(j.data.history) meta.history=j.data.history; }
+      if(j.data.history) meta.history=j.data.history;
+      if(j.data.esops) meta.esops=j.data.esops; }
     if(j.quotes&&Object.keys(j.quotes).length){        /* relay bundled prices in - no 2nd trip */
       lastQuotes=j.quotes;
       for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];
+      if(j.quotes[ESOP_SYM]) idx[ESOP_SYM]=j.quotes[ESOP_SYM];
       applyQuotes(j.quotes);
       meta.updatedAt=j.t||new Date().toISOString(); sync="live";
     }
@@ -442,7 +466,7 @@ function applyQuotes(q){
 }
 async function pollQuotes(){
   if(!AUTH||document.hidden) return;
-  const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean))];
+  const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean).concat(esopSyms()))];
   const want=syms.concat(INDICES.map(i=>i.s));
   if(!want.length) return;
   try{
@@ -451,6 +475,7 @@ async function pollQuotes(){
     if(j.quotes){
       lastQuotes=j.quotes;
       for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];
+      if(j.quotes[ESOP_SYM]) idx[ESOP_SYM]=j.quotes[ESOP_SYM];
       applyQuotes(j.quotes);
       meta.updatedAt=j.t||new Date().toISOString();
       live=true; sync="live"; failCount=0; cacheLocal();
@@ -598,7 +623,8 @@ function shellHTML(){
     '<button role="tab" aria-selected="true" data-tab="core">Core</button>'+
     '<button role="tab" aria-selected="false" data-tab="ipo">'+POOL2+'</button>'+
     '<button role="tab" aria-selected="false" data-tab="flows">Flows</button>'+
-    '<button role="tab" aria-selected="false" data-tab="plan">Plan</button></nav>'+
+    '<button role="tab" aria-selected="false" data-tab="plan">Plan</button>'+
+    '<button role="tab" aria-selected="false" data-tab="esop">ESOP</button></nav>'+
     '<div id="content"></div></div>'+
     '<button class="fab" id="fab" aria-label="Add stock">+</button>';
 }
@@ -639,6 +665,7 @@ function render(){
   renderIdx();
   const c=$("#content");
   if(tab==="flows") c.innerHTML=flowsHTML();
+  else if(tab==="esop") c.innerHTML=esopHTML();
   else if(tab==="plan") c.innerHTML=planHTML(core);
   else{
     let set=tab==="ipo"?ipo:core; const coreInv=totals(core).inv;
@@ -820,6 +847,207 @@ function planHTML(core){
       '<th scope="col">Buy?</th><th scope="col">Tgt</th><th scope="col" data-role="nowh">'+(c.cash||c.put?"New":"Now")+'</th><th scope="col">Action</th>'+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
+
+/* ---------- ESOPs ----------
+   Grants vest 30% / 30% / 40% on the grant year +1, +2, +3. Exercising turns a
+   tranche into a share lot held in the demat account: cost basis is the market
+   price on the exercise day, and the perquisite tax was already paid on the
+   spread over the strike. Sold lots are simply deleted - this section tracks
+   what is still held and what is still to vest. */
+const VEST=[0.30,0.30,0.40];
+const esopDefaults={taxPerq:31,taxLt:12.5,taxSt:20};
+function esops(){
+  const e=meta.esops||{};
+  return {grants:e.grants||{},lots:e.lots||{},
+    taxPerq:isFinite(e.taxPerq)?e.taxPerq:esopDefaults.taxPerq,
+    taxLt:isFinite(e.taxLt)?e.taxLt:esopDefaults.taxLt,
+    taxSt:isFinite(e.taxSt)?e.taxSt:esopDefaults.taxSt};
+}
+function esopWrite(fn){
+  if(!meta.esops) meta.esops={grants:{},lots:{},...esopDefaults};
+  if(!meta.esops.grants) meta.esops.grants={};
+  if(!meta.esops.lots) meta.esops.lots={};
+  fn(meta.esops); saveRemote();
+}
+const esopPx=()=>{const q=idx[ESOP_SYM]; return q&&q.p>0?q.p:0;};
+/* cumulative options vested by the end of a calendar year */
+function vestedBy(g,year){
+  const n=year-(+g.year); let f=0;
+  for(let i=0;i<VEST.length;i++) if(n>=i+1) f+=VEST[i];
+  return Math.round((+g.qty||0)*f);
+}
+const thisYear=()=>new Date().getFullYear();
+/* one row per held lot, with the tax that a sale today would attract */
+function esopLots(){
+  const E=esops(), px=esopPx(), out=[];
+  for(const [id,l] of Object.entries(E.lots)){
+    const g=E.grants[l.gid]||{}, qty=+l.qty||0, fmv=+l.fmv||0, strike=+g.strike||0;
+    const perq=isFinite(+l.perq)&&+l.perq>=0?+l.perq:Math.max(0,qty*(fmv-strike))*E.taxPerq/100;
+    const cash=qty*strike+perq;                 /* what it actually cost you */
+    const value=qty*px, gain=value-qty*fmv;
+    const long=!l.date||(Date.now()-Date.parse(l.date+"T00:00:00"))>=365*864e5;
+    const rate=long?E.taxLt:E.taxSt;
+    const tax=gain>0?gain*rate/100:0;
+    out.push({id,gid:l.gid,year:+g.year||0,qty,fmv,strike,date:l.date||"",
+      perq,cash,value,gain,tax,net:value-tax,long,rate});
+  }
+  return out.sort((a,b)=>a.year-b.year||b.qty-a.qty);
+}
+/* what is still to vest, by calendar year */
+function esopVesting(){
+  const E=esops(), y0=thisYear(), by={};
+  for(const g of Object.values(E.grants)){
+    for(let y=y0+1;y<=(+g.year)+VEST.length;y++){
+      const q=vestedBy(g,y)-vestedBy(g,y-1);
+      if(q>0){ (by[y]=by[y]||{q:0,rows:[]}); by[y].q+=q; by[y].rows.push({year:g.year,q}); }
+    }
+  }
+  return by;
+}
+function esopHTML(){
+  const E=esops(), px=esopPx(), lots=esopLots(), gs=Object.values(E.grants);
+  if(!lots.length&&!gs.length)
+    return '<div class="empty"><b>No ESOPs yet</b>Tap + to add a grant.</div>';
+  const qty=lots.reduce((a,l)=>a+l.qty,0), value=lots.reduce((a,l)=>a+l.value,0);
+  const basis=lots.reduce((a,l)=>a+l.qty*l.fmv,0), cash=lots.reduce((a,l)=>a+l.cash,0);
+  const tax=lots.reduce((a,l)=>a+l.tax,0), gain=value-basis;
+  const q=idx[ESOP_SYM]||{}, dayPct=q.pc>0?(q.p-q.pc)/q.pc*100:0;
+
+  const head='<div class="ecard">'+
+    '<div class="eh"><span>ICICI Bank</span><span class="mono">'+(px?price(px):"—")+
+      ' <em class="'+cls(dayPct)+'">'+spct(dayPct)+'</em></span></div>'+
+    '<div class="ekv">'+
+      kv("Shares held",'<span class="mono">'+inr0.format(qty)+'</span>')+
+      kv("Value now",'<span class="mono">'+rupee(value)+'</span>',1)+
+      kv("Cost basis",'<span class="mono">'+rupee(basis)+'</span>')+
+      kv("Unrealized",'<span class="mono '+cls(gain)+'">'+sgn(gain)+rupee(gain)+'</span>',1)+
+      kv("Tax if sold",'<span class="mono">'+rupee(tax)+'</span>')+
+      kv("Net if sold",'<span class="mono">'+rupee(value-tax)+'</span>',1)+
+    '</div>'+
+    '<div class="efoot"><span>Cash you put in <b class="mono">'+rupee(cash)+
+      '</b></span><span>Profit on it <b class="mono '+cls(value-tax-cash)+'">'+sgn(value-tax-cash)+rupee(value-tax-cash)+'</b></span></div>'+
+    '</div>';
+
+  const lotRows=lots.length?'<div class="ptwrap"><table class="pt et"><thead><tr>'+
+    '<th scope="col">Grant</th><th scope="col">Qty</th><th scope="col">Basis</th>'+
+    '<th scope="col">Value</th><th scope="col">Gain</th><th scope="col">Net</th></tr></thead><tbody>'+
+    lots.map(l=>'<tr data-elot="'+l.id+'">'+
+      '<th scope="row">'+l.year+(l.date?'':'<span class="nod">?</span>')+'</th>'+
+      '<td class="mono num">'+inr0.format(l.qty)+'</td>'+
+      '<td class="mono num">'+priceShort(l.fmv)+'</td>'+
+      '<td class="mono num">'+compactR(l.value)+'</td>'+
+      '<td class="mono num '+cls(l.gain)+'">'+sgn(l.gain)+compactR(l.gain)+'</td>'+
+      '<td class="mono num">'+compactR(l.net)+'</td></tr>').join("")+
+    '</tbody></table></div>':'';
+
+  const vest=esopVesting(), vy=Object.keys(vest).sort();
+  const vestRows=vy.length?'<div class="secthead">Still to vest</div><div class="flows">'+
+    vy.map(y=>'<div class="vrow"><div class="m">'+y+'</div>'+
+      '<div class="vg">'+vest[y].rows.map(r=>r.year+" grant · "+inr0.format(r.q)).join(" · ")+'</div>'+
+      '<div class="a mono">'+inr0.format(vest[y].q)+'</div></div>').join("")+'</div>':'';
+
+  const grantRows='<div class="secthead">Grants</div><div class="ptwrap"><table class="pt et"><thead><tr>'+
+    '<th scope="col">Year</th><th scope="col">Granted</th><th scope="col">Strike</th>'+
+    '<th scope="col">Vested</th><th scope="col">Held</th><th scope="col">To vest</th></tr></thead><tbody>'+
+    gs.sort((a,b)=>a.year-b.year).map(g=>{
+      const gid=Object.keys(E.grants).find(k=>E.grants[k]===g);
+      const v=vestedBy(g,thisYear()), held=lots.filter(l=>l.gid===gid).reduce((a,l)=>a+l.qty,0);
+      return '<tr data-egrant="'+gid+'">'+
+        '<th scope="row">'+g.year+'</th>'+
+        '<td class="mono num">'+inr0.format(g.qty)+'</td>'+
+        '<td class="mono num">'+priceShort(+g.strike)+'</td>'+
+        '<td class="mono num">'+inr0.format(v)+'</td>'+
+        '<td class="mono num">'+inr0.format(held)+'</td>'+
+        '<td class="mono num">'+inr0.format((+g.qty||0)-v)+'</td></tr>';
+    }).join("")+'</tbody></table></div>';
+
+  return head+'<div class="secthead">Shares held</div>'+
+    (lotRows||'<p class="hint">Nothing exercised yet. Tap a grant to record an exercise.</p>')+
+    vestRows+grantRows+
+    '<p class="hint" style="padding:0 4px">Tap a row to edit it. '+
+      (lots.some(l=>!l.date)?'A <b>?</b> means the exercise date is missing, so that lot is taxed as long term — tap it to fill the date in. ':'')+
+      'ESOPs stay out of your portfolio, allocation, Flows and CAGR.</p>';
+}
+function bindEsop(){
+  document.querySelectorAll("[data-elot]").forEach(r=>
+    r.addEventListener("click",()=>esopLotSheet(r.dataset.elot)));
+  document.querySelectorAll("[data-egrant]").forEach(r=>
+    r.addEventListener("click",()=>esopGrantSheet(r.dataset.egrant)));
+}
+
+
+/* ---------- ESOP sheets ---------- */
+function esopGrantSheet(id){
+  const E=esops(), g=id?E.grants[id]:null, y=thisYear();
+  openSheet(g?"Grant "+g.year:"Add ESOP grant",
+    '<div class="f2"><div class="f"><label>Grant year</label><input id="gY" class="mono" inputmode="numeric" value="'+(g?g.year:y)+'"></div>'+
+    '<div class="f"><label>Total options</label><input id="gQ" class="mono" inputmode="numeric" value="'+(g?g.qty:"")+'"></div></div>'+
+    '<div class="f"><label>Strike price per share</label><input id="gS" class="mono" inputmode="decimal" value="'+(g?g.strike:"")+'"></div>'+
+    '<div class="err" id="gErr"></div>'+
+    '<button class="primary" id="gGo">'+(g?"Save":"Add")+'</button>'+
+    (g?'<div id="gVest"></div>'+
+       '<button class="ghost" id="gEx" style="margin-top:12px">Record an exercise</button>'+
+       '<p class="hint" style="margin-top:6px">Use this when a vested tranche is exercised and the shares land in your demat.</p>'+
+       '<button class="ghost" id="gDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Delete grant</button>':
+       '<p class="hint">Vesting is 30% after one year, 30% after two, 40% after three. Next year’s vesting is worked out from this.</p>'));
+  const draw=()=>{
+    const el=$("#gVest"); if(!el||!g) return;
+    const q=+$("#gQ").value||0, yr=+$("#gY").value||y;
+    const rows=VEST.map((f,i)=>({y:yr+i+1,q:Math.round(q*(VEST.slice(0,i+1).reduce((a,b)=>a+b,0)))-Math.round(q*(VEST.slice(0,i).reduce((a,b)=>a+b,0)))}));
+    el.innerHTML='<div class="secthead">Vesting</div>'+rows.map(r=>
+      '<div class="gvr"><span>'+r.y+(r.y<=y?" · vested":"")+'</span><span class="mono">'+inr0.format(r.q)+'</span></div>').join("");
+  };
+  draw();
+  ["#gY","#gQ"].forEach(k=>{const el=$(k); if(el) el.addEventListener("input",draw);});
+  $("#gGo").addEventListener("click",()=>{
+    const yr=parseInt($("#gY").value,10), q=parseFloat($("#gQ").value), st=parseFloat($("#gS").value);
+    if(!(yr>1990&&yr<2100)||!(q>0)||!(st>=0)) return showErr("#gErr","Year, total options and strike price are all required.");
+    esopWrite(E2=>{ const k=id||uid(); E2.grants[k]={year:yr,qty:q,strike:st}; });
+    closeSheet(); setTab("esop"); pollQuotes();
+  });
+  const ex=$("#gEx"); if(ex) ex.addEventListener("click",()=>{closeSheet(); esopLotSheet(null,id);});
+  const del=$("#gDel");
+  if(del) del.addEventListener("click",e=>{
+    const b=e.currentTarget;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Delete the grant and its lots?"; return; }
+    esopWrite(E2=>{ for(const k of Object.keys(E2.lots)) if(E2.lots[k].gid===id) delete E2.lots[k]; delete E2.grants[id]; });
+    closeSheet(); setTab("esop");
+  });
+}
+function esopLotSheet(id,gid){
+  const E=esops(), l=id?E.lots[id]:null;
+  gid=l?l.gid:gid;
+  const g=E.grants[gid]||{};
+  const opts=Object.entries(E.grants).sort((a,b)=>a[1].year-b[1].year).map(([k,v])=>
+    '<option value="'+k+'"'+(k===gid?" selected":"")+'>'+v.year+' · strike '+priceShort(+v.strike)+'</option>').join("");
+  const held=esopLots().filter(x=>x.gid===gid&&x.id!==id).reduce((a,x)=>a+x.qty,0);
+  const free=Math.max(0,vestedBy(g,thisYear())-held-(l?0:0));
+  openSheet(l?"Exercised lot":"Record an exercise",
+    '<div class="f"><label>Grant</label><select id="lG">'+opts+'</select></div>'+
+    '<div class="f2"><div class="f"><label>Shares</label><input id="lQ" class="mono" inputmode="numeric" value="'+(l?l.qty:"")+'" placeholder="'+(free||"")+'"></div>'+
+    '<div class="f"><label>Price on exercise day</label><input id="lP" class="mono" inputmode="decimal" value="'+(l?l.fmv:"")+'"></div></div>'+
+    '<div class="f2"><div class="f"><label>Exercise date</label><input id="lD" type="date" value="'+(l&&l.date?l.date:"")+'"></div>'+
+    '<div class="f"><label>Perquisite tax paid</label><input id="lT" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.perq)?l.perq:"")+'" placeholder="auto"></div></div>'+
+    '<p class="hint" style="margin-top:6px">The date sets the rate a sale attracts — '+esops().taxLt+'% after a year held, '+esops().taxSt+'% before; blank assumes long term. Leave the tax blank and it is computed at '+esops().taxPerq+'%.</p>'+
+    '<div class="err" id="lErr"></div>'+
+    '<button class="primary" id="lGo">'+(l?"Save":"Add")+'</button>'+
+    (l?'<button class="ghost" id="lDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Sold — remove this lot</button>':""));
+  $("#lGo").addEventListener("click",()=>{
+    const k2=$("#lG").value, q=parseFloat($("#lQ").value), fp=parseFloat($("#lP").value), d=$("#lD").value||"";
+    const pt=parseFloat($("#lT").value);
+    if(!k2||!(q>0)||!(fp>0)) return showErr("#lErr","Grant, shares and the exercise-day price are required.");
+    esopWrite(E2=>{ const k=id||uid(); E2.lots[k]={gid:k2,qty:q,fmv:fp,date:d,...(isFinite(pt)&&pt>=0?{perq:pt}:{})}; });
+    closeSheet(); setTab("esop"); pollQuotes();
+  });
+  const del=$("#lDel");
+  if(del) del.addEventListener("click",e=>{
+    const b=e.currentTarget;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Remove it?"; return; }
+    esopWrite(E2=>{ delete E2.lots[id]; });
+    closeSheet(); setTab("esop");
+  });
+}
+
 /* ---------- flows ---------- */
 /* the Indian financial year runs 1 April to 31 March; offset 0 = current, 1 = previous */
 function fyStart(off){
@@ -942,6 +1170,7 @@ function bind(){
   document.querySelectorAll("[data-month]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
   bindPlan();
+  bindEsop();
 }
 function bindPlan(){
   const pt=$("#planT");
@@ -1445,7 +1674,7 @@ function mountShell(){
   $("#themeBtn").addEventListener("click",cycleTheme);
   $("#cfgBtn").addEventListener("click",cfgSheet);
   $("#searchBtn").addEventListener("click",searchSheet);
-  $("#fab").addEventListener("click",()=>addSheet());
+  $("#fab").addEventListener("click",()=>tab==="esop"?esopGrantSheet():addSheet());
   $("#seg").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setTab(b.dataset.tab);});
 }
 function mountSetup(mode){

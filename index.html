@@ -133,6 +133,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   background:var(--surface2);color:var(--gold);font-size:12px;font-weight:700;line-height:1;padding:0}
 .msel[aria-pressed="true"]{border-color:var(--gold);background:var(--gold-soft)}
 .frow{flex:1;min-width:0;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px 13px 12px}
+.cus{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+.cusr{display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center}
+.cusr span{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.cus select{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:9px;
+  padding:8px 9px;font:inherit;font-size:13px;color:var(--ink)}
 .ftot{margin-top:12px;padding:12px 16px;border:1px solid var(--gold);border-radius:14px;background:var(--gold-soft)}
 .ftot .ft1{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)}
 .ftot .ft1 b{font-size:19px;font-weight:600;color:var(--ink)}
@@ -328,9 +333,10 @@ let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
 const INDICES=[{s:"^NSEI",n:"NIFTY 50"},{s:"^BSESN",n:"SENSEX"}];
 let idx={};
 let tab="core", flowPeriod="all", openMonth=null, sortBy="day", flowSel={};
+let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v35";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v36";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -814,15 +820,51 @@ function planHTML(core){
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 /* ---------- flows ---------- */
-function flowCutoff(){
-  if(flowPeriod==="all") return "0000";
-  const d=new Date(); d.setMonth(d.getMonth()-({"3m":3,"6m":6,"1y":12}[flowPeriod]||0));
-  return d.toISOString().slice(0,10);
+/* the Indian financial year runs 1 April to 31 March; offset 0 = current, 1 = previous */
+function fyStart(off){
+  const d=new Date();
+  return (d.getMonth()>=3?d.getFullYear():d.getFullYear()-1)-(off||0);
+}
+const fyLabel=off=>{const y=fyStart(off);return "FY "+String(y%100).padStart(2,"0")+"-"+String((y+1)%100).padStart(2,"0");};
+const monthEnd=ym=>{const[y,m]=ym.split("-").map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);};
+/* every period resolves to an inclusive [from,to] window */
+function flowWindow(){
+  if(flowPeriod==="fy"||flowPeriod==="pfy"){
+    const y=fyStart(flowPeriod==="pfy"?1:0);
+    return [y+"-04-01",(y+1)+"-03-31"];
+  }
+  if(flowPeriod==="cus"){
+    let a=flowA||fyStart(0)+"-04", b=flowB||new Date().toISOString().slice(0,7);
+    if(a>b){ const t=a; a=b; b=t; }
+    return [a+"-01",monthEnd(b)];
+  }
+  return ["0000-01-01","9999-12-31"];
+}
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/* year span offered by the custom pickers: from the oldest flow to this financial year */
+function flowYears(){
+  let lo=fyStart(0);
+  for(const f of cashFlows()) if(f.date){ const y=+f.date.slice(0,4); if(y<lo) lo=y; }
+  const hi=fyStart(0)+1, out=[];
+  for(let y=hi;y>=lo;y--) out.push(y);
+  return out;
+}
+function customHTML(){
+  const a=flowA||fyStart(0)+"-04", b=flowB||new Date().toISOString().slice(0,7), ys=flowYears();
+  const sel=(role,ym)=>{
+    const[y,m]=ym.split("-");
+    return '<select data-cus="'+role+'m" aria-label="Month">'+MON.map((n,i)=>
+        '<option value="'+String(i+1).padStart(2,"0")+'"'+(+m===i+1?" selected":"")+'>'+n+'</option>').join("")+'</select>'+
+      '<select data-cus="'+role+'y" aria-label="Year">'+ys.map(v=>
+        '<option value="'+v+'"'+(+y===v?" selected":"")+'>'+v+'</option>').join("")+'</select>';
+  };
+  return '<div class="cus"><div class="cusr"><span>From</span>'+sel("a",a)+'</div>'+
+         '<div class="cusr"><span>To</span>'+sel("b",b)+'</div></div>';
 }
 function flowsHTML(){
-  const cut=flowCutoff(), byM={};
+  const [from,to]=flowWindow(), byM={};
   for(const f of cashFlows()){
-    if(!f.date||f.date<cut) continue;
+    if(!f.date||f.date<from||f.date>to) continue;
     const m=f.date.slice(0,7);
     (byM[m]=byM[m]||{net:0,rows:[]});
     byM[m].net+=(f.side==="sell"?1:-1)*f.amt;
@@ -830,8 +872,9 @@ function flowsHTML(){
   }
   const ms=Object.keys(byM).sort().reverse();
   for(const m of Object.keys(flowSel)) if(!byM[m]) delete flowSel[m];   /* drop months this period hides */
-  const chips='<div class="chips">'+["3m","6m","1y","all"].map(p=>
-    '<button aria-pressed="'+(flowPeriod===p)+'" data-period="'+p+'">'+p.toUpperCase()+'</button>').join("")+"</div>";
+  const chips='<div class="chips">'+[["fy",fyLabel(0)],["pfy",fyLabel(1)],["cus","Custom"],["all","All"]].map(p=>
+    '<button aria-pressed="'+(flowPeriod===p[0])+'" data-period="'+p[0]+'">'+p[1].toUpperCase()+'</button>').join("")+"</div>"+
+    (flowPeriod==="cus"?customHTML():"");
   if(!ms.length) return chips+'<div class="empty"><b>No activity</b>Nothing in this period.</div>';
 
   /* running total for whatever months are ticked */
@@ -885,6 +928,11 @@ function bind(){
     b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
   document.querySelectorAll("[data-period]").forEach(b=>
     b.addEventListener("click",()=>{flowPeriod=b.dataset.period;openMonth=null;render();}));
+  document.querySelectorAll("[data-cus]").forEach(sl=>
+    sl.addEventListener("change",()=>{
+      const g=r=>$('[data-cus="'+r+'y"]').value+"-"+$('[data-cus="'+r+'m"]').value;
+      flowA=g("a"); flowB=g("b"); openMonth=null; render();
+    }));
   document.querySelectorAll("[data-msel]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.msel;
       if(flowSel[m]) delete flowSel[m]; else flowSel[m]=1; render();}));

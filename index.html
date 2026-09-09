@@ -162,23 +162,42 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .eres.tot{border-top:1px solid var(--line);margin-top:5px;padding-top:11px}
 .eres.tot span{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
 .eres.tot b{font-size:17px;font-weight:600}
-.etbl{margin-top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;
-  box-shadow:var(--card-shadow);overflow:hidden}
-.eo{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:fixed}
-.eo th:first-child{width:38%}
-.eo th:nth-child(2){width:22%}
-.eo thead th{background:var(--surface);border-bottom:1px solid var(--line2);
-  font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);
-  padding:11px 12px;text-align:right}
-.eo thead th:first-child{text-align:left}
-.eo tbody th{text-align:left;font-size:13.5px;font-weight:600;padding:12px 12px}
-.eo tbody th span{display:block;margin-top:2px;font-size:10px;font-weight:500;color:var(--muted)}
-.eo tbody td{text-align:right;padding:12px 12px;vertical-align:middle;white-space:nowrap}
+.etbl{margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);
+  border:1px solid var(--line2);border-radius:16px;box-shadow:var(--card-shadow)}
+.eo{border-collapse:separate;border-spacing:0;width:100%;min-width:392px;font-size:11.5px}
+.eo thead th{position:sticky;top:0;background:var(--surface);z-index:2;
+  font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);
+  padding:10px 5px;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+.eo thead th:first-child{text-align:left;padding-left:12px;left:0;z-index:3}
+.eo tbody th{position:sticky;left:0;background:var(--surface);z-index:1;text-align:left;
+  padding:9px 6px 9px 11px;font-size:12.5px;font-weight:600;white-space:nowrap;
+  border-bottom:1px solid var(--line2)}
+.eo tbody th span{display:block;margin-top:1px;font-size:9.5px;font-weight:500;color:var(--muted)}
+.eo tbody td{padding:9px 5px;text-align:right;vertical-align:middle;border-bottom:1px solid var(--line2)}
+.eo tbody td:last-child{padding-right:12px;white-space:nowrap}
+.eo tbody tr:last-child th,.eo tbody tr:last-child td{border-bottom:0}
 .eo tr.on th,.eo tr.on td{background:var(--gold-soft)}
-.eo tbody tr:not(.on)+tr:not(.on) th,.eo tbody tr:not(.on)+tr:not(.on) td{border-top:1px solid var(--line2)}
-.qbtn{font:inherit;font-family:"Spline Sans Mono",monospace;font-size:13.5px;font-weight:600;color:var(--gold);
-  border:1px solid var(--line);border-radius:9px;background:var(--surface2);padding:5px 11px}
-.ebox{padding:2px 14px 16px !important;background:var(--gold-soft);text-align:left !important}
+.eo input{width:100%;min-width:46px;background:var(--surface2);border:1px solid var(--line);
+  border-radius:7px;padding:6px 6px;font:inherit;font-family:"Spline Sans Mono",monospace;
+  font-size:10.5px;color:var(--ink);text-align:right}
+.eo .num{font-size:11.5px;font-weight:600}
+.qbtn{font-family:"Spline Sans Mono",monospace;font-size:12px;font-weight:600;color:var(--gold);
+  border:1px solid var(--line);border-radius:8px;background:var(--surface2);padding:5px 8px}
+.ebox{padding:4px 12px 14px !important;background:var(--gold-soft);text-align:left !important;
+  position:sticky;left:0}
+.bxr{display:flex;align-items:flex-end;gap:12px;padding:6px 0 10px}
+.bxr .ei{flex:none;width:104px}
+.bxp{flex:1;min-width:0;font-size:10.5px;color:var(--muted);padding-bottom:8px}
+.ei span{display:block;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:4px}
+.ei input{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:7px 9px;font:inherit;font-size:12.5px;color:var(--ink);text-align:right}
+.eres{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:6px 0;
+  font-size:12px;color:var(--muted)}
+.eres b{font-size:12.5px;font-weight:500;color:var(--ink)}
+.eres.tot{border-top:1px solid var(--line);margin-top:5px;padding-top:10px}
+.eres.tot span{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.eres.tot b{font-size:16px;font-weight:600}
 .gvr{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:13px}
 .gvr:first-of-type{border-top:0}
 .gvr span:first-child{color:var(--muted)}
@@ -390,7 +409,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v44";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v45";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -992,21 +1011,18 @@ function eDraft(key,d){
   for(const k in d) if(o[k]===undefined||o[k]==="") o[k]=d[k];
   return o;
 }
-const eNum=(k,f,v,lab)=>'<label class="ei"><span>'+lab+'</span>'+
-  '<input class="mono" data-ek="'+k+'" data-ef="'+f+'" inputmode="decimal" value="'+v+'"></label>';
 const eLine=(l,v,c)=>'<div class="eres'+(c?" tot":"")+'"><span>'+l+'</span><b class="mono'+
   (c?" "+cls(c==="auto"?0:0):"")+'">'+v+'</b></div>';
 /* a sale of shares already sitting in the demat */
 /* options that still have to be exercised - vested now, or vesting later */
 function calcOption(qty,strike,key,px,E){
-  const d=eDraft(key,{ep:(px||0).toFixed(2),sq:qty,sp:(px||0).toFixed(2),tx:E.taxCg});
+  const nice=n=>Number.isInteger(n)?String(n):n.toFixed(2);
+  const d=eDraft(key,{ep:nice(px||0),sq:qty,sp:nice(px||0),tx:E.taxCg});
   const ep=+d.ep||0, sq=Math.min(Math.max(0,+d.sq||0),qty), sp=+d.sp||0, tx=+d.tx||0;
   const exCost=sq*strike, perq=Math.max(0,sq*(ep-strike))*E.taxPerq/100;
   const cgTax=Math.max(0,sq*(sp-ep))*tx/100, proceeds=sq*sp;
   const profit=proceeds-exCost-perq-cgTax;
   return {pat:profit,
-    form:eNum(key,"ep",d.ep,"Exercise at")+eNum(key,"sq",d.sq,"Sell qty")+
-               eNum(key,"sp",d.sp,"Sell price")+eNum(key,"tx",d.tx,"Tax %"),
     rows:eLine("Sale proceeds",rupee(proceeds))+
       eLine("Cost to exercise","−"+rupee(exCost))+
       eLine("Perquisite tax @"+E.taxPerq+"%","−"+rupee(perq))+
@@ -1032,21 +1048,23 @@ function esopHTML(){
       "perquisite "+S.perqRate.toFixed(1)+"%",cls(S.pat))+
     '</div></div>';
 
-  /* 2 and 3 - two tables of options still to be exercised */
-  const rowsOf=(list,keyPrefix)=>list.map(r=>{
-    const key=keyPrefix+r.year+"_"+r.gid, open=esopOpen===key;
-    const c=calcOption(r.qty,r.gpx,key,S.cmp,E);
-    return '<tr class="'+(open?"on":"")+'"><th scope="row">'+r.year+
-        '<span>'+r.gy+' grant</span></th>'+
+  /* 2 and 3 - the options still to be exercised, everything editable in the row */
+  const eIn=(k,f,v)=>'<input class="mono" data-ek="'+k+'" data-ef="'+f+'" inputmode="decimal" value="'+v+'">';
+  const rowsOf=(list,pre)=>list.map(r=>{
+    const key=pre+r.year+"_"+r.gid, open=esopOpen===key;
+    const c=calcOption(r.qty,r.gpx,key,S.cmp,E), d=eD[key]||{};
+    return '<tr'+(open?' class="on"':'')+'>'+
+      '<th scope="row">'+r.year+'<span>&rsquo;'+String(r.gy).slice(2)+' grant</span></th>'+
       '<td><button class="qbtn" data-eo="'+key+'">'+inr0.format(r.qty)+'</button></td>'+
-      '<td class="mono num '+cls(c.pat)+'">'+sgn(c.pat)+rupee(c.pat)+'</td></tr>'+
-      (open?'<tr class="on"><td colspan="3" class="ebox">'+
-        '<div class="eform">'+c.form+'</div>'+c.rows+
-        (keyPrefix==="V"?'<button class="ghost" data-eex="'+r.gid+'" style="margin-top:12px">Record this exercise</button>':"")+
-      '</td></tr>':"");
+      '<td>'+eIn(key,"ep",d.ep)+'</td>'+
+      '<td>'+eIn(key,"sq",d.sq)+'</td>'+
+      '<td>'+eIn(key,"sp",d.sp)+'</td>'+
+      '<td class="mono num '+cls(c.pat)+'" data-pat="'+key+'">'+sgn(c.pat)+rupee(c.pat)+'</td></tr>'+
+      (open?'<tr class="on"><td colspan="6" class="ebox" data-box="'+key+'">'+esopBox(key,c,r,pre)+'</td></tr>':"");
   }).join("");
   const tbl=(list,pre)=>'<div class="etbl"><table class="eo"><thead><tr>'+
-    '<th scope="col">Vested</th><th scope="col">Qty</th><th scope="col">PAT</th>'+
+    '<th scope="col">Vested</th><th scope="col">Qty</th><th scope="col">Ex&nbsp;₹</th>'+
+    '<th scope="col">Sell</th><th scope="col">Sell&nbsp;₹</th><th scope="col">PAT</th>'+
     '</tr></thead><tbody>'+rowsOf(list,pre)+'</tbody></table></div>';
 
   const vo=esopVestedOpen(), voN=vo.reduce((a,r)=>a+r.qty,0);
@@ -1065,6 +1083,15 @@ function esopHTML(){
 
   return card+sec2+sec3+grantList+
     '<button class="ghost" id="eAdd" style="margin-top:14px">Add an ESOP grant</button>';
+}
+/* what opens under a row: the tax rate, then how the profit is arrived at */
+function esopBox(key,c,r,pre){
+  const d=eD[key]||{}, E=esops();
+  return '<div class="bxr"><label class="ei"><span>Tax on gain %</span>'+
+      '<input class="mono" data-ek="'+key+'" data-ef="tx" inputmode="decimal" value="'+(d.tx!==undefined?d.tx:E.taxCg)+'"></label>'+
+      '<div class="bxp"><span>12.5% after a year held, 20% before</span></div></div>'+
+    c.rows+
+    (pre==="V"?'<button class="ghost" data-eex="'+r.gid+'" style="margin-top:12px">Record this exercise</button>':"");
 }
 /* not-vested tranches, one row per grant per vesting year */
 function esopNotVested(){
@@ -1095,20 +1122,20 @@ function bindEsop(){
 }
 /* recompute one open row without rebuilding the page under the keyboard */
 function refreshEsopCalc(key){
-  const btn=document.querySelector('[data-eo="'+key+'"]'); if(!btn) return;
-  const box=btn.closest("tbody").querySelector("tr.on .ebox"); if(!box) return;
-  const E=esops(), cmp=esopPx();
-  const list=key.charAt(0)==="V"?esopVestedOpen():esopNotVested();
-  const r=list.find(x=>(key.charAt(0)+x.year+"_"+x.gid)===key); if(!r) return;
+  const E=esops(), cmp=esopPx(), pre=key.charAt(0);
+  const list=pre==="V"?esopVestedOpen():esopNotVested();
+  const r=list.find(x=>(pre+x.year+"_"+x.gid)===key); if(!r) return;
   const c=calcOption(r.qty,r.gpx,key,cmp,E);
-  const f=(document.activeElement&&document.activeElement.dataset)?document.activeElement.dataset.ef:null;
-  box.innerHTML='<div class="eform">'+c.form+'</div>'+c.rows+
-    (key.charAt(0)==="V"?'<button class="ghost" data-eex="'+r.gid+'" style="margin-top:12px">Record this exercise</button>':"");
-  const cell=btn.closest("tr").querySelector("td.num");
+  const cell=document.querySelector('[data-pat="'+key+'"]');
   if(cell){ cell.className="mono num "+cls(c.pat); cell.textContent=sgn(c.pat)+rupee(c.pat); }
-  bindEsop();
-  if(f){ const again=box.querySelector('[data-ef="'+f+'"]');
-    if(again){ again.focus(); try{again.setSelectionRange(again.value.length,again.value.length);}catch(e){} } }
+  const box=document.querySelector('[data-box="'+key+'"]');
+  if(box){
+    const f=(document.activeElement&&document.activeElement.dataset)?document.activeElement.dataset.ef:null;
+    box.innerHTML=esopBox(key,c,r,pre);
+    bindEsop();
+    if(f==="tx"){ const again=box.querySelector('[data-ef="tx"]');
+      if(again){ again.focus(); try{again.setSelectionRange(again.value.length,again.value.length);}catch(e){} } }
+  }
 }
 /* the four dashboard tiles, each editing exactly what drives it */
 function esopEditSheet(which){

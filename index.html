@@ -142,10 +142,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
   justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted)}
 .efoot b{font-weight:600;color:var(--ink)}
 .et{min-width:392px}
+.erates{margin-top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:14px;
+  box-shadow:var(--card-shadow);padding:4px 16px}
+.er{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
+  border-top:1px solid var(--line2);font-size:12.5px;color:var(--muted)}
+.er:first-child{border-top:0}
+.er input{width:56px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;
+  padding:6px 8px;font:inherit;font-size:12.5px;color:var(--ink);text-align:right;margin-right:3px}
 .gvr{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:13px}
 .gvr:first-of-type{border-top:0}
 .gvr span:first-child{color:var(--muted)}
-.et .nod{color:var(--gold);font-weight:700;margin-left:3px}
 .vrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line2)}
 .vrow:first-child{border-top:0}
 .vrow .m{width:52px;font-size:13px;font-weight:600}
@@ -359,7 +365,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v38";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v39";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -855,13 +861,12 @@ function planHTML(core){
    spread over the strike. Sold lots are simply deleted - this section tracks
    what is still held and what is still to vest. */
 const VEST=[0.30,0.30,0.40];
-const esopDefaults={taxPerq:31,taxLt:12.5,taxSt:20};
+const esopDefaults={taxPerq:34,taxCg:20};   /* editable; per-lot overrides win */
 function esops(){
   const e=meta.esops||{};
   return {grants:e.grants||{},lots:e.lots||{},
     taxPerq:isFinite(e.taxPerq)?e.taxPerq:esopDefaults.taxPerq,
-    taxLt:isFinite(e.taxLt)?e.taxLt:esopDefaults.taxLt,
-    taxSt:isFinite(e.taxSt)?e.taxSt:esopDefaults.taxSt};
+    taxCg:isFinite(e.taxCg)?e.taxCg:(isFinite(e.taxSt)?e.taxSt:esopDefaults.taxCg)};
 }
 function esopWrite(fn){
   if(!meta.esops) meta.esops={grants:{},lots:{},...esopDefaults};
@@ -885,11 +890,10 @@ function esopLots(){
     const perq=isFinite(+l.perq)&&+l.perq>=0?+l.perq:Math.max(0,qty*(fmv-strike))*E.taxPerq/100;
     const cash=qty*strike+perq;                 /* what it actually cost you */
     const value=qty*px, gain=value-qty*fmv;
-    const long=!l.date||(Date.now()-Date.parse(l.date+"T00:00:00"))>=365*864e5;
-    const rate=long?E.taxLt:E.taxSt;
+    const rate=isFinite(+l.cgr)&&+l.cgr>=0?+l.cgr:E.taxCg;
     const tax=gain>0?gain*rate/100:0;
     out.push({id,gid:l.gid,year:+g.year||0,qty,fmv,strike,date:l.date||"",
-      perq,cash,value,gain,tax,net:value-tax,long,rate});
+      perq,cash,value,gain,tax,net:value-tax,rate});
   }
   return out.sort((a,b)=>a.year-b.year||b.qty-a.qty);
 }
@@ -932,7 +936,7 @@ function esopHTML(){
     '<th scope="col">Grant</th><th scope="col">Qty</th><th scope="col">Basis</th>'+
     '<th scope="col">Value</th><th scope="col">Gain</th><th scope="col">Net</th></tr></thead><tbody>'+
     lots.map(l=>'<tr data-elot="'+l.id+'">'+
-      '<th scope="row">'+l.year+(l.date?'':'<span class="nod">?</span>')+'</th>'+
+      '<th scope="row">'+l.year+'</th>'+
       '<td class="mono num">'+inr0.format(l.qty)+'</td>'+
       '<td class="mono num">'+priceShort(l.fmv)+'</td>'+
       '<td class="mono num">'+compactR(l.value)+'</td>'+
@@ -964,11 +968,22 @@ function esopHTML(){
   return head+'<div class="secthead">Shares held</div>'+
     (lotRows||'<p class="hint">Nothing exercised yet. Tap a grant to record an exercise.</p>')+
     vestRows+grantRows+
-    '<p class="hint" style="padding:0 4px">Tap a row to edit it. '+
-      (lots.some(l=>!l.date)?'A <b>?</b> means the exercise date is missing, so that lot is taxed as long term — tap it to fill the date in. ':'')+
-      'ESOPs stay out of your portfolio, allocation, Flows and CAGR.</p>';
+    ratesHTML(E)+
+    '<p class="hint" style="padding:0 4px">Tap a row to edit it. ESOPs stay out of your portfolio, allocation, Flows and CAGR.</p>';
+}
+function ratesHTML(E){
+  return '<div class="secthead">Tax rates</div><div class="erates">'+
+    '<div class="er"><span>Perquisite on exercise</span><span><input class="mono" data-erate="perq" inputmode="decimal" value="'+E.taxPerq+'">%</span></div>'+
+    '<div class="er"><span>On sale, unless a lot says otherwise</span><span><input class="mono" data-erate="cg" inputmode="decimal" value="'+E.taxCg+'">%</span></div>'+
+    '</div>';
 }
 function bindEsop(){
+  document.querySelectorAll("[data-erate]").forEach(inp=>
+    inp.addEventListener("change",()=>{
+      const v=parseFloat(inp.value); if(!(v>=0)) return;
+      esopWrite(E2=>{ if(inp.dataset.erate==="perq") E2.taxPerq=v; else E2.taxCg=v; });
+      setTab("esop");
+    }));
   document.querySelectorAll("[data-elot]").forEach(r=>
     r.addEventListener("click",()=>esopLotSheet(r.dataset.elot)));
   document.querySelectorAll("[data-egrant]").forEach(r=>
@@ -1027,16 +1042,20 @@ function esopLotSheet(id,gid){
     '<div class="f2"><div class="f"><label>Shares</label><input id="lQ" class="mono" inputmode="numeric" value="'+(l?l.qty:"")+'" placeholder="'+(free||"")+'"></div>'+
     '<div class="f"><label>Price on exercise day</label><input id="lP" class="mono" inputmode="decimal" value="'+(l?l.fmv:"")+'"></div></div>'+
     '<div class="f2"><div class="f"><label>Exercise date</label><input id="lD" type="date" value="'+(l&&l.date?l.date:"")+'"></div>'+
-    '<div class="f"><label>Perquisite tax paid</label><input id="lT" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.perq)?l.perq:"")+'" placeholder="auto"></div></div>'+
-    '<p class="hint" style="margin-top:6px">The date sets the rate a sale attracts — '+esops().taxLt+'% after a year held, '+esops().taxSt+'% before; blank assumes long term. Leave the tax blank and it is computed at '+esops().taxPerq+'%.</p>'+
+    '<div class="f"><label>Tax on sale %</label><input id="lR" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.cgr)?l.cgr:E.taxCg)+'"></div></div>'+
+    '<div class="f"><label>Perquisite tax paid</label><input id="lT" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.perq)?l.perq:"")+'" placeholder="auto at '+E.taxPerq+'%"></div>'+
+    '<p class="hint" style="margin-top:6px">Leave the perquisite tax blank and it is worked out at '+E.taxPerq+'% of the spread over the strike.</p>'+
     '<div class="err" id="lErr"></div>'+
     '<button class="primary" id="lGo">'+(l?"Save":"Add")+'</button>'+
     (l?'<button class="ghost" id="lDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Sold — remove this lot</button>':""));
   $("#lGo").addEventListener("click",()=>{
     const k2=$("#lG").value, q=parseFloat($("#lQ").value), fp=parseFloat($("#lP").value), d=$("#lD").value||"";
-    const pt=parseFloat($("#lT").value);
+    const pt=parseFloat($("#lT").value), cr=parseFloat($("#lR").value);
     if(!k2||!(q>0)||!(fp>0)) return showErr("#lErr","Grant, shares and the exercise-day price are required.");
-    esopWrite(E2=>{ const k=id||uid(); E2.lots[k]={gid:k2,qty:q,fmv:fp,date:d,...(isFinite(pt)&&pt>=0?{perq:pt}:{})}; });
+    esopWrite(E2=>{ const k=id||uid();
+      E2.lots[k]={gid:k2,qty:q,fmv:fp,date:d,
+        ...(isFinite(pt)&&pt>=0?{perq:pt}:{}),
+        ...(isFinite(cr)&&cr>=0?{cgr:cr}:{})}; });
     closeSheet(); setTab("esop"); pollQuotes();
   });
   const del=$("#lDel");

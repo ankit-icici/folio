@@ -11,10 +11,12 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
 - **Dashboard** — current value, total investment, unrealised P&L, day P&L, gainers/losers split, and lifetime **CAGR** (money-weighted XIRR over your full transaction history, recomputed live)
 - **Core** — full detail per holding: qty, last price, current value, unrealised P&L and %, day P&L, average buy, invested, and allocation %. Sort by value, name, or day %
 - **Satellite** — holdings that count in the dashboard but sit outside allocation and rebalancing (REITs/InvITs, IPO flips, anything you don't want in the core allocation maths)
-- **Flows** — net cash in/out per month from your pocket's perspective (buys −, sells +green), with every transaction listed per month and 3M/6M/1Y/All filters. Can be backed by an imported multi-account ledger so history predates the app itself
+- **Flows** — net cash in/out per month from your pocket's perspective (buys −, sells +green), with every transaction listed per month. Periods are **financial years** (India's April–March), a **custom** month range, or All; picking one ticks every month in it and totals them, and any month can be unticked to leave it out. Can be backed by an imported multi-account ledger so history predates the app itself
 - **Plan** — set a target % per core stock, optionally add or withdraw cash, and get per-stock "Add ₹X · n shares" / "Trim ₹X" instructions computed together at portfolio level. Allocation status is colour-coded: red under-allocated, orange near target, green over-allocated
+- **ESOP** — a separate tab for employer stock, kept out of the portfolio entirely. Grants vest 30/30/40 on the grant year +1/+2/+3, so next year's vesting is worked out for you. The dashboard gives CMP, shares held, value after tax and profit after tax, each tile tapping through to the one input that drives it. Options still to be exercised — vested or not — sit in a table where exercise price, sell quantity and sell price are editable inline and profit after tax updates as you type; the tax rate and the full workings open under the row
 - **Buy/Sell** with FIFO lot accounting (sell preview shows FIFO cost and realised gain), plus per-stock edit and bulk paste-import of holdings
-- Live NSE prices every 15 s, light/dark/auto themes, works offline against the last synced state
+- **Add by name** — start typing a company and the ticker is resolved for you; stocks listed only on BSE work too
+- Live NSE prices every 15 s, light/dark/auto themes, works offline against the last synced state, and the installed app updates itself when a new build ships
 
 ## Architecture
 
@@ -22,7 +24,8 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
 - `relay/Code.gs` — the Google Apps Script backend deployed on the host's Google account:
   - `POST {action:register}` — create an account (username + PIN)
   - `GET action=load` / `POST {action:save, data, force?}` — that account's portfolio JSON in Drive
-  - `GET action=quotes&symbols=…` — live NSE prices via Yahoo Finance, cached server-side 45 s so all users share fetch quota
+  - `GET action=quotes&symbols=…` — live prices via Yahoo Finance, cached server-side so all users share fetch quota. A bare ticker is NSE; a `.BO` suffix is BSE; a `^` prefix is an index
+  - `GET action=search&q=…` — company-name lookup for the add-stock typeahead
   - `GET action=snapshots` / `GET action=snapshot&day=…` — restore points
   - `POST {action:unregister}` — delete the account, its data, and its snapshots
 - `sw.js` + `manifest.webmanifest` — installable, offline-capable shell

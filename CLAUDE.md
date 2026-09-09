@@ -103,10 +103,56 @@ one place that computes it (core invested + the cash box + any single-stock matc
   Not the same as `d`; don't conflate them.
 - `planDilute` — fresh money into the *other* holdings that brings an over-weight name down to
   target with no sale. Shown per row as "or +Rs X in others".
+
+### Flows periods
+
+`flowWindow()` resolves every period to an inclusive `[from, to]` pair — there is no rolling
+cutoff any more. Financial years run 1 April to 31 March (`fyStart()` / `fyLabel()` roll over
+automatically each April), and "Custom" is a from/to month pair (`flowA`, `flowB`, swapped if
+reversed). Choosing a period ticks every month in it (`flowTouched = false`) and the header
+totals them; unticking one sets `flowTouched` and shows an "All months" reset. A month the
+current period hides is dropped from the selection rather than counted invisibly.
 - `planBand(t,T2) = max(500, 2% of the stock's own target value)` is the on-target tolerance.
   It MUST stay in sync with `planDilute`, which solves to that same threshold — a band expressed
   as a share of the whole portfolio makes small positions read "on target" while the dilution
   figure still asks for lakhs. That exact mismatch was a reported bug; keep them coupled.
+
+### ESOPs (ESOP tab)
+
+Employer stock lives in `meta.esops` and is **deliberately outside** `stocks{}` — it must never
+reach the dashboard, allocation, Plan, Flows or CAGR. Its price comes from `ESOP_SYM`
+("ICICIBANK") fetched alongside the portfolio symbols and parked in `idx[ESOP_SYM]`, not in a
+stock record. The user's own ICICIBANK share sales are excluded from the portfolio for the same
+reason (employee shares, not investments).
+
+```js
+meta.esops = {
+  grants: { id: {year, qty, strike, sold} },   // strike is shown as "grant price"
+  lots:   { id: {gid, qty, fmv, date?, perq?, cgr?} },  // exercised, sitting in the demat
+  pool:   {qty?, fmv?, gpx?, perq?},           // dashboard overrides
+  cmp?, taxPerq, taxCg
+}
+```
+
+- **Vesting is derived, never stored**: `VEST = [0.30, 0.30, 0.40]` on the grant year +1, +2, +3.
+  `vestedBy(g, year)` is the cumulative figure; a single year's tranche is the difference between
+  consecutive years. Verified against the user's own sheet: 700 -> 210/210/280, 430 -> 129/129/172.
+- `sold` is what left before the app existed. Without it, `esopUnex()` would report every
+  already-sold vested option as "vested, not exercised" — 390 phantom options on the 2021 grant.
+  Removing a lot as sold adds its quantity to `sold` automatically; keep that link.
+- **Two taxes, and they are not the same thing.** *Perquisite* tax is salary tax on
+  (exercise price − grant price), paid when you exercise. *Capital gains* tax is on
+  (sale price − exercise price). The perquisite rate varied by year (31% and 34% in this
+  account), so the **paid amount** is stored per lot and aggregated into `pool.perq` rather than
+  recomputed from one rate — a flat 34% overstates it by about Rs 12,000. The PAT tile edits the
+  amount and shows the rate it implies. Don't "simplify" this back to a rate.
+- `esopPool()` collapses the lots into quantity, average exercise price, average grant price and
+  paid perquisite tax; `esopSummary()` turns those into the four dashboard figures. Overriding
+  the quantity scales the perquisite pro-rata.
+- `eD` holds the per-row what-if inputs (exercise price, sell qty, sell price, tax %) as raw
+  strings, seeded from CMP by `eDraft()`. They are transient on purpose — a scenario must not
+  outlive the session. `refreshEsopCalc()` updates the PAT cell and the open box **in place**;
+  a full `render()` on every keystroke steals focus mid-typing.
 
 ## Data durability (do not weaken)
 
@@ -167,8 +213,23 @@ signed-in page (`api()`, `stocks`, `txns` are all in scope), e.g.
   Either import both sides, or exclude the record from the return calculation.
 - Broker exports are dirty: Groww emits **₹0 "SELL" rows for off-market transfers** between the
   owner's own accounts (drop them — internal moves, not trades) and for rights/bonus
-  entitlements, and some rows carry corrupt dates (year 1971). ICICI Direct's UI exposes only
-  the current and previous financial year, so its older trades are simply unavailable.
+  entitlements, and some rows carry corrupt dates (year 1971).
+- **ICICI Direct**: the trading UI shows only today. The history lives on `ireports.icicidirect.com`
+  — *Orders → Order/Trade Book* (set the period, then press View) for trades, and
+  *Statements → P&L Statement* for matched buy/sell pairs with cost basis, which is the
+  authoritative source for a realised gain. Its *Capital Gains* statement covers mutual funds
+  only. Its instrument codes are internal and are **not** NSE tickers (DHOTRA is Dhoot
+  Transmission, whose real symbol is DHOOTTRANS) — always resolve the symbol before storing it.
+- **An IPO allotment produces no buy order anywhere.** The "never count an orphan sell" rule
+  above then silently discards the sale as unmatched, which is how a real 17 Aug 2026 trade went
+  missing from the ledger entirely. When a sell has no buy, look for an allotment before deleting it.
+- **Duplicate function declarations shadow silently.** Rewriting a screen and leaving the old
+  helper behind means the later declaration wins and the new one never runs — no error, just a
+  UI that ignores input. After any rewrite: `grep -c "function <name>"` and expect 1.
+- **Don't reuse the `pt` class for a new table.** It carries `min-width:452px` for the Plan
+  layout, which forces sideways scrolling on a 375px screen no matter what the new table sets.
+- When adding a field to `meta.esops` (or any settings blob), add it to the **reader** too —
+  `esops()` returns an explicit object, so a field it doesn't list is written and then ignored.
 - Mobile first: transaction rows are two lines (name + chip, then date · qty × price) with the
   amount on the right. Five-column table layouts truncate names to "He…" on a phone.
 

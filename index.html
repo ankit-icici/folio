@@ -134,29 +134,51 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .msel[aria-pressed="true"]{border-color:var(--gold);background:var(--gold-soft)}
 .frow{flex:1;min-width:0;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 18px 13px 12px}
 .ecard{margin-top:16px;background:var(--surface);border:1px solid var(--line2);border-radius:18px;
-  box-shadow:var(--card-shadow);padding:16px 18px}
-.eh{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:600}
-.eh em{font-style:normal;font-size:11.5px;font-weight:600}
-.ekv{display:grid;grid-template-columns:1fr 1fr;gap:11px 10px;margin-top:13px}
-.efoot{border-top:1px solid var(--line);margin-top:14px;padding-top:12px;display:flex;
-  justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted)}
-.efoot b{font-weight:600;color:var(--ink)}
-.et{min-width:392px}
-.erates{margin-top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:14px;
-  box-shadow:var(--card-shadow);padding:4px 16px}
-.er{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;
-  border-top:1px solid var(--line2);font-size:12.5px;color:var(--muted)}
-.er:first-child{border-top:0}
-.er input{width:56px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;
-  padding:6px 8px;font:inherit;font-size:12.5px;color:var(--ink);text-align:right;margin-right:3px}
+  box-shadow:var(--card-shadow);padding:16px 18px 6px}
+.eh{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;
+  font-weight:600;padding-bottom:13px;border-bottom:1px solid var(--line)}
+.eh .sym{font-size:10.5px;color:var(--faint);letter-spacing:.04em;font-weight:500}
+.estat b em{font-style:normal;font-size:12px;font-weight:600;margin-left:4px}
+.estat{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:12px 0;
+  border-bottom:1px solid var(--line2)}
+.estat:last-child{border-bottom:0}
+.estat span{font-size:10px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+.estat b{font-size:17px;font-weight:600}
+.estat.big b{font-size:23px}
+.elist{margin-top:10px;background:var(--surface);border:1px solid var(--line2);border-radius:16px;
+  box-shadow:var(--card-shadow);overflow:hidden}
+.egrp+.egrp{border-top:1px solid var(--line2)}
+.egrp.on{background:var(--surface2)}
+.ehead{width:100%;text-align:left;display:flex;align-items:flex-start;justify-content:space-between;
+  gap:14px;padding:14px 16px}
+.ehead+.egrp,.ehead+.ehead{border-top:1px solid var(--line2)}
+.ehead.past{border-top:1px solid var(--line2)}
+.ehead.past:first-child{border-top:0}
+.e1{flex:none;display:flex;flex-direction:column;gap:3px}
+.e1 b{font-size:15px;font-weight:600}
+.e1 span{font-size:11px;color:var(--muted)}
+.e2{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-end;gap:3px;text-align:right}
+.e2 b{font-size:14px;font-weight:600}
+.e2 span{font-size:11.5px;color:var(--muted)}
+.e2 .tv{color:var(--gold);font-weight:600}
+.edet{padding:2px 16px 14px}
+.elot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;
+  border-top:1px solid var(--line);font-size:12.5px;cursor:pointer}
+.elot span:nth-child(2){flex:1;min-width:0;color:var(--muted);text-align:center}
+.edet .ghost{margin-top:12px}
+.edet .linky{display:block;margin:10px auto 0}
+.vrow{display:flex;align-items:center;gap:12px;padding:13px 16px;border-top:1px solid var(--line2)}
+.vrow:first-child{border-top:0}
+.vrow .m{width:46px;font-size:14px;font-weight:600}
+.vrow .vg{flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow .a{font-size:15px;font-weight:600;text-align:right}
+.taxline{width:100%;margin-top:14px;display:flex;align-items:center;gap:6px;padding:13px 16px;
+  border:1px solid var(--line2);border-radius:14px;background:var(--surface);font-size:12.5px;color:var(--muted)}
+.taxline b{color:var(--ink);font-weight:600}
+.taxline span{margin-left:auto;color:var(--faint);font-size:17px;line-height:1}
 .gvr{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line2);font-size:13px}
 .gvr:first-of-type{border-top:0}
 .gvr span:first-child{color:var(--muted)}
-.vrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line2)}
-.vrow:first-child{border-top:0}
-.vrow .m{width:52px;font-size:13px;font-weight:600}
-.vrow .vg{flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vrow .a{font-size:13px;font-weight:600;text-align:right}
 .cus{margin-top:10px;display:flex;flex-direction:column;gap:7px}
 .cusr{display:grid;grid-template-columns:44px 1fr 1fr;gap:8px;align-items:center}
 .cusr span{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
@@ -365,7 +387,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v39";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v40";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -862,6 +884,7 @@ function planHTML(core){
    what is still held and what is still to vest. */
 const VEST=[0.30,0.30,0.40];
 const esopDefaults={taxPerq:34,taxCg:20};   /* editable; per-lot overrides win */
+let esopOpen=null;   /* the grant whose lots are showing */
 function esops(){
   const e=meta.esops||{};
   return {grants:e.grants||{},lots:e.lots||{},
@@ -909,85 +932,98 @@ function esopVesting(){
   return by;
 }
 function esopHTML(){
-  const E=esops(), px=esopPx(), lots=esopLots(), gs=Object.values(E.grants);
-  if(!lots.length&&!gs.length)
+  const E=esops(), px=esopPx(), lots=esopLots(), gids=Object.keys(E.grants);
+  if(!lots.length&&!gids.length)
     return '<div class="empty"><b>No ESOPs yet</b>Tap + to add a grant.</div>';
-  const qty=lots.reduce((a,l)=>a+l.qty,0), value=lots.reduce((a,l)=>a+l.value,0);
-  const basis=lots.reduce((a,l)=>a+l.qty*l.fmv,0), cash=lots.reduce((a,l)=>a+l.cash,0);
-  const tax=lots.reduce((a,l)=>a+l.tax,0), gain=value-basis;
   const q=idx[ESOP_SYM]||{}, dayPct=q.pc>0?(q.p-q.pc)/q.pc*100:0;
+  const qty=lots.reduce((a,l)=>a+l.qty,0);
+  const net=lots.reduce((a,l)=>a+l.net,0);          /* value at CMP, less tax on sale */
+  const pat=net-lots.reduce((a,l)=>a+l.cash,0);    /* profit after every tax */
 
-  const head='<div class="ecard">'+
-    '<div class="eh"><span>ICICI Bank</span><span class="mono">'+(px?price(px):"—")+
-      ' <em class="'+cls(dayPct)+'">'+spct(dayPct)+'</em></span></div>'+
-    '<div class="ekv">'+
-      kv("Shares held",'<span class="mono">'+inr0.format(qty)+'</span>')+
-      kv("Value now",'<span class="mono">'+rupee(value)+'</span>',1)+
-      kv("Cost basis",'<span class="mono">'+rupee(basis)+'</span>')+
-      kv("Unrealized",'<span class="mono '+cls(gain)+'">'+sgn(gain)+rupee(gain)+'</span>',1)+
-      kv("Tax if sold",'<span class="mono">'+rupee(tax)+'</span>')+
-      kv("Net if sold",'<span class="mono">'+rupee(value-tax)+'</span>',1)+
-    '</div>'+
-    '<div class="efoot"><span>Cash you put in <b class="mono">'+rupee(cash)+
-      '</b></span><span>Profit on it <b class="mono '+cls(value-tax-cash)+'">'+sgn(value-tax-cash)+rupee(value-tax-cash)+'</b></span></div>'+
+  const card='<div class="ecard">'+
+    '<div class="eh"><span>ICICI Bank</span><span class="sym mono">ICICIBANK</span></div>'+
+    '<div class="estat"><span>CMP</span><b class="mono">'+(px?price(px):"—")+
+      ' <em class="'+cls(dayPct)+'">'+spct(dayPct)+'</em></b></div>'+
+    '<div class="estat"><span>Shares held</span><b class="mono">'+inr0.format(qty)+'</b></div>'+
+    '<div class="estat big"><span>Value after tax</span><b class="mono">'+rupee(net)+'</b></div>'+
+    '<div class="estat big"><span>Profit after tax</span><b class="mono '+cls(pat)+'">'+sgn(pat)+rupee(pat)+'</b></div>'+
     '</div>';
 
-  const lotRows=lots.length?'<div class="ptwrap"><table class="pt et"><thead><tr>'+
-    '<th scope="col">Grant</th><th scope="col">Qty</th><th scope="col">Basis</th>'+
-    '<th scope="col">Value</th><th scope="col">Gain</th><th scope="col">Net</th></tr></thead><tbody>'+
-    lots.map(l=>'<tr data-elot="'+l.id+'">'+
-      '<th scope="row">'+l.year+'</th>'+
-      '<td class="mono num">'+inr0.format(l.qty)+'</td>'+
-      '<td class="mono num">'+priceShort(l.fmv)+'</td>'+
-      '<td class="mono num">'+compactR(l.value)+'</td>'+
-      '<td class="mono num '+cls(l.gain)+'">'+sgn(l.gain)+compactR(l.gain)+'</td>'+
-      '<td class="mono num">'+compactR(l.net)+'</td></tr>').join("")+
-    '</tbody></table></div>':'';
+  /* one line per grant, not per lot - the lots open underneath on a tap */
+  const vest=esopVesting();
+  const rows=gids.map(gid=>{
+    const g=E.grants[gid], mine=lots.filter(l=>l.gid===gid);
+    const held=mine.reduce((a,l)=>a+l.qty,0);
+    const gnet=mine.reduce((a,l)=>a+l.net,0);
+    const gpat=gnet-mine.reduce((a,l)=>a+l.cash,0);
+    const left=(+g.qty||0)-vestedBy(g,thisYear());
+    return {gid,g,held,gnet,gpat,left};
+  }).sort((a,b)=>b.g.year-a.g.year);
 
-  const vest=esopVesting(), vy=Object.keys(vest).sort();
-  const vestRows=vy.length?'<div class="secthead">Still to vest</div><div class="flows">'+
+  const live=rows.filter(r=>r.held>0||r.left>0), done=rows.filter(r=>!(r.held>0||r.left>0));
+
+  const lotLine=l=>'<div class="elot" data-elot="'+l.id+'">'+
+    '<span class="mono">'+inr0.format(l.qty)+'</span>'+
+    '<span>bought at <b class="mono">'+price(l.fmv)+'</b></span>'+
+    '<span class="mono '+cls(l.net-l.cash)+'">'+sgn(l.net-l.cash)+rupee(l.net-l.cash)+'</span></div>';
+
+  const holdings=live.length?'<div class="elist">'+live.map(r=>{
+    const open=esopOpen===r.gid;
+    return '<div class="egrp'+(open?" on":"")+'">'+
+      '<button class="ehead" data-eg="'+r.gid+'" aria-expanded="'+open+'">'+
+        '<div class="e1"><b>'+r.g.year+'</b><span>strike '+price(+r.g.strike)+'</span></div>'+
+        '<div class="e2">'+
+          (r.held>0?'<b class="mono">'+inr0.format(r.held)+' shares</b>':'<b class="dim">nothing exercised</b>')+
+          (r.held>0?'<span class="mono">'+rupee(r.gnet)+' after tax</span>':"")+
+          (r.held>0?'<span class="mono '+cls(r.gpat)+'">'+sgn(r.gpat)+rupee(r.gpat)+' profit</span>':"")+
+          (r.left>0?'<span class="tv">'+inr0.format(r.left)+' still to vest</span>':"")+
+        '</div></button>'+
+      (open?'<div class="edet">'+
+        (r.held>0?lots.filter(l=>l.gid===r.gid).map(lotLine).join(""):"")+
+        '<button class="ghost" data-eex="'+r.gid+'">Record an exercise</button>'+
+        '<button class="linky" data-eed="'+r.gid+'">Edit this grant</button>'+
+      '</div>':"")+
+    '</div>';
+  }).join("")+'</div>':'<p class="hint">Tap + to add a grant.</p>';
+
+  const vy=Object.keys(vest).sort();
+  const vestBlock=vy.length?'<div class="secthead">Vesting ahead</div><div class="elist">'+
     vy.map(y=>'<div class="vrow"><div class="m">'+y+'</div>'+
-      '<div class="vg">'+vest[y].rows.map(r=>r.year+" grant · "+inr0.format(r.q)).join(" · ")+'</div>'+
+      '<div class="vg">'+vest[y].rows.map(r=>r.year+" grant "+inr0.format(r.q)).join(" · ")+'</div>'+
       '<div class="a mono">'+inr0.format(vest[y].q)+'</div></div>').join("")+'</div>':'';
 
-  const grantRows='<div class="secthead">Grants</div><div class="ptwrap"><table class="pt et"><thead><tr>'+
-    '<th scope="col">Year</th><th scope="col">Granted</th><th scope="col">Strike</th>'+
-    '<th scope="col">Vested</th><th scope="col">Held</th><th scope="col">To vest</th></tr></thead><tbody>'+
-    gs.sort((a,b)=>a.year-b.year).map(g=>{
-      const gid=Object.keys(E.grants).find(k=>E.grants[k]===g);
-      const v=vestedBy(g,thisYear()), held=lots.filter(l=>l.gid===gid).reduce((a,l)=>a+l.qty,0);
-      return '<tr data-egrant="'+gid+'">'+
-        '<th scope="row">'+g.year+'</th>'+
-        '<td class="mono num">'+inr0.format(g.qty)+'</td>'+
-        '<td class="mono num">'+priceShort(+g.strike)+'</td>'+
-        '<td class="mono num">'+inr0.format(v)+'</td>'+
-        '<td class="mono num">'+inr0.format(held)+'</td>'+
-        '<td class="mono num">'+inr0.format((+g.qty||0)-v)+'</td></tr>';
-    }).join("")+'</tbody></table></div>';
+  const past=done.length?'<div class="secthead">Fully sold</div><div class="elist">'+
+    done.map(r=>'<button class="ehead past" data-eed="'+r.gid+'">'+
+      '<div class="e1"><b>'+r.g.year+'</b><span>strike '+price(+r.g.strike)+'</span></div>'+
+      '<div class="e2"><span class="dim">'+inr0.format(r.g.qty)+' options, all sold</span></div></button>').join("")+'</div>':'';
 
-  return head+'<div class="secthead">Shares held</div>'+
-    (lotRows||'<p class="hint">Nothing exercised yet. Tap a grant to record an exercise.</p>')+
-    vestRows+grantRows+
-    ratesHTML(E)+
-    '<p class="hint" style="padding:0 4px">Tap a row to edit it. ESOPs stay out of your portfolio, allocation, Flows and CAGR.</p>';
-}
-function ratesHTML(E){
-  return '<div class="secthead">Tax rates</div><div class="erates">'+
-    '<div class="er"><span>Perquisite on exercise</span><span><input class="mono" data-erate="perq" inputmode="decimal" value="'+E.taxPerq+'">%</span></div>'+
-    '<div class="er"><span>On sale, unless a lot says otherwise</span><span><input class="mono" data-erate="cg" inputmode="decimal" value="'+E.taxCg+'">%</span></div>'+
-    '</div>';
+  return card+'<div class="secthead">Your grants</div>'+holdings+vestBlock+past+
+    '<button class="taxline" id="eTax">Tax <b>'+E.taxPerq+'%</b> on exercise · <b>'+E.taxCg+'%</b> on sale<span>›</span></button>';
 }
 function bindEsop(){
-  document.querySelectorAll("[data-erate]").forEach(inp=>
-    inp.addEventListener("change",()=>{
-      const v=parseFloat(inp.value); if(!(v>=0)) return;
-      esopWrite(E2=>{ if(inp.dataset.erate==="perq") E2.taxPerq=v; else E2.taxCg=v; });
-      setTab("esop");
-    }));
+  document.querySelectorAll("[data-eg]").forEach(b=>
+    b.addEventListener("click",()=>{const g=b.dataset.eg; esopOpen=esopOpen===g?null:g; render();}));
   document.querySelectorAll("[data-elot]").forEach(r=>
     r.addEventListener("click",()=>esopLotSheet(r.dataset.elot)));
-  document.querySelectorAll("[data-egrant]").forEach(r=>
-    r.addEventListener("click",()=>esopGrantSheet(r.dataset.egrant)));
+  document.querySelectorAll("[data-eex]").forEach(b=>
+    b.addEventListener("click",e=>{e.stopPropagation(); esopLotSheet(null,b.dataset.eex);}));
+  document.querySelectorAll("[data-eed]").forEach(b=>
+    b.addEventListener("click",e=>{e.stopPropagation(); esopGrantSheet(b.dataset.eed);}));
+  const t=$("#eTax"); if(t) t.addEventListener("click",esopTaxSheet);
+}
+function esopTaxSheet(){
+  const E=esops();
+  openSheet("Tax rates",
+    '<div class="f"><label>Perquisite tax when you exercise</label><input id="tP" class="mono" inputmode="decimal" value="'+E.taxPerq+'"></div>'+
+    '<p class="hint" style="margin-top:6px">Charged on the gap between the market price on exercise day and the strike price. Used for new exercises — lots already recorded keep the tax you entered for them.</p>'+
+    '<div class="f"><label>Tax when you sell</label><input id="tC" class="mono" inputmode="decimal" value="'+E.taxCg+'"></div>'+
+    '<p class="hint" style="margin-top:6px">Applied to the gain since exercise. Any lot can override this from its own screen.</p>'+
+    '<button class="primary" id="tGo">Save</button>');
+  $("#tGo").addEventListener("click",()=>{
+    const a=parseFloat($("#tP").value), b=parseFloat($("#tC").value);
+    esopWrite(E2=>{ if(a>=0) E2.taxPerq=a; if(b>=0) E2.taxCg=b; });
+    closeSheet(); setTab("esop");
+  });
 }
 
 

@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v58";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v59";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1122,7 +1122,7 @@ function esopHTML(){
     '</div></div>';
 
   /* 2 and 3 - the options still to be exercised, everything editable in the row */
-  const eIn=(k,f,v)=>'<input class="mono" data-ek="'+k+'" data-ef="'+f+'" inputmode="decimal" value="'+v+'">';
+  const eIn=(k,f,v)=>'<input class="mono" data-ek="'+k+'" data-ef="'+f+'" inputmode="decimal" '+(MASK?'value="XXX" disabled':'value="'+v+'"')+'>';
   const rowsOf=(list,pre)=>list.map(r=>{
     const key=pre+r.year+"_"+r.gid, open=esopOpen===key;
     const c=calcOption(r.qty,r.gpx,key,S.cmp,E), d=eD[key]||{};

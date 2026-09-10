@@ -6,6 +6,8 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
 
 **This repository contains only application code.** Portfolios live as per-account JSON files in the host's Google Drive, behind a Google Apps Script backend. Accounts are isolated by SHA-256 of username+PIN; wrong-PIN attempts are rate-limited.
 
+- **Advisor view** — a second, view-only PIN shows stocks & funds without ESOPs; set or revoke it from Account.
+
 ## What it does
 
 - **Dashboard** — current value, total investment, unrealised P&L, day P&L, gainers/losers split, and lifetime **CAGR** (money-weighted XIRR over your full transaction history, recomputed live)

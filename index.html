@@ -408,6 +408,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 const BACKEND="https://script.google.com/macros/s/AKfycbyCNQActuQE9F8aNPZsISFMlWWJf2Mj1jRT2Em-jSC4ZCENFKdgrEvHWX46HxaxDd_kYw/exec";
 let AUTH=null; try{AUTH=JSON.parse(localStorage.getItem("nivesh_auth")||"null");}catch(e){}
 const api=q=>BACKEND+"?u="+encodeURIComponent(AUTH.u)+"&p="+encodeURIComponent(AUTH.p)+(q?"&"+q:"");
+const isGuest=()=>!!(AUTH&&AUTH.g);   /* advisor key: view-only, esops never sent to this device */
 const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — try again in a few minutes.",
   username_taken:"That username is taken.",bad_username:"Username: 3–20 letters, digits, - or _.",
   pin_too_short:"PIN must be at least 4 characters."};
@@ -426,7 +427,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v60";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v61";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -473,6 +474,7 @@ function cycleTheme(){
 /* ---------- persistence ---------- */
 function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta,idx}));}catch(e){} }
 async function saveNow(force){
+  if(isGuest()){ pendingSave=false; return; }
   try{
     const body=JSON.stringify({action:"save",force:force===true,
       data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),...(meta.mf?{mf:meta.mf}:{}),savedAt:new Date().toISOString()}});
@@ -490,7 +492,7 @@ async function saveNow(force){
   renderHeroOnly();
 }
 function saveRemote(force){
-  if(!AUTH) return;
+  if(!AUTH||isGuest()) return;
   cacheLocal();
   clearTimeout(saveTimer); pendingSave=true; renderHeroOnly();
   saveTimer=setTimeout(()=>saveNow(force),1200);
@@ -503,6 +505,7 @@ async function loadRemote(){
     const r=await fetch(api("action=load&symbols="+syms.join(",")));
     const j=await r.json();
     if(j.error){ ready=true; live=false; sync="off"; return false; }
+    if(j.guest&&!AUTH.g){ AUTH.g=1; try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e2){} }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
       if(j.data.history) meta.history=j.data.history;
       if(j.data.esops) meta.esops=j.data.esops;
@@ -701,11 +704,12 @@ function shellHTML(){
     '<button role="tab" data-tab="home">Home</button>'+
     '<button role="tab" data-tab="stocks">Stocks</button>'+
     '<button role="tab" data-tab="mf">Funds</button>'+
-    '<button role="tab" data-tab="esop">ESOP</button></nav>'+
+    (isGuest()?'':'<button role="tab" data-tab="esop">ESOP</button>')+'</nav>'+
     '<div id="subseg"></div>'+
     '<section class="hero" id="hero"></section>'+
-    '<div id="content"></div></div>'+
-    '<button class="fab" id="fab" aria-label="Add">+</button>';
+    '<div id="content"></div>'+
+    (isGuest()?'<p class="hint" style="text-align:center;margin:18px 0 8px">View-only access · nothing you tap here changes the portfolio</p>':'')+'</div>'+
+    (isGuest()?'':'<button class="fab" id="fab" aria-label="Add">+</button>');
 }
 const view=()=>tab==="home"?"home":(tab==="mf"?"mf":(tab==="esop"?"esop":"stocks"));
 /* privacy shutter: one tap hides every figure, your PIN brings them back */
@@ -2413,6 +2417,14 @@ function importBackupSheet(){
   });
 }
 function cfgSheet(){
+  if(isGuest()){
+    openSheet("Account",
+      '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b> with an advisor PIN. This view is read-only and never includes ESOPs.</p>'+
+      '<button class="primary" id="sOut">Sign out</button>'+
+      '<p class="hint" style="margin-top:16px;text-align:center">Build <span class="mono">'+BUILD+'</span></p>');
+    $("#sOut").addEventListener("click",signOut);
+    return;
+  }
   openSheet("Account",
     '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Everything you change is saved automatically.</p>'+
     '<button class="primary" id="sOut">Sign out</button>'+
@@ -2421,11 +2433,40 @@ function cfgSheet(){
     '<p class="hint" style="margin-top:6px">Every day’s version is kept, plus one for every month — forever.</p>'+
     '<button class="ghost" id="sExp">Save a copy to this device</button>'+
     '<p class="hint" style="margin-top:6px">Optional. A file you can keep anywhere as your own backup.</p>'+
+    '<div class="secthead">Advisor access</div>'+
+    '<div class="f"><label>Advisor PIN — view-only, ESOPs stay hidden</label><input id="gPin" class="mono" inputmode="numeric" autocomplete="off" placeholder="4+ digits, not your own PIN"></div>'+
+    '<div class="acts"><button id="gSet">Set / change</button><button id="gOff">Revoke access</button></div>'+
+    '<div class="err" id="gErr"></div>'+
+    '<p class="hint" id="gMsg" style="margin-top:6px">Share the app link, your username and that PIN. Your advisor sees stocks and funds only, and cannot change or save anything. Revoke any time.</p>'+
     '<div class="secthead">Danger</div>'+
     '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete my account and data</button>'+
     '<div class="err" id="sErr"></div>'+
     '<p class="hint" style="margin-top:16px;text-align:center">Build <span class="mono">'+BUILD+'</span></p>');
   $("#sOut").addEventListener("click",signOut);
+  const gCall=async gp=>{
+    const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({action:"setguest",gp:gp})});
+    return r.json();
+  };
+  $("#gSet").addEventListener("click",async e=>{
+    const b=e.currentTarget, gp=$("#gPin").value.trim();
+    if(gp.length<4) return showErr("#gErr","The advisor PIN needs at least 4 digits.");
+    if(gp===String(AUTH.p)) return showErr("#gErr","Pick something different from your own PIN.");
+    b.disabled=true;
+    try{ const j=await gCall(gp);
+      if(j.error) throw new Error(j.error==="same_as_owner"?"Pick something different from your own PIN.":"Couldn\u2019t save \u2014 "+j.error);
+      $("#gPin").value=""; $("#gMsg").textContent="Advisor PIN is set. Share the app link, your username \u2018"+AUTH.u+"\u2019 and that PIN.";
+    }catch(err){ showErr("#gErr",err.message); }
+    b.disabled=false;
+  });
+  $("#gOff").addEventListener("click",async e=>{
+    const b=e.currentTarget; b.disabled=true;
+    try{ const j=await gCall("");
+      if(j.error) throw new Error(j.error);
+      $("#gMsg").textContent="Advisor access is off. Anyone with the old advisor PIN is locked out.";
+    }catch(err){ showErr("#gErr",err.message); }
+    b.disabled=false;
+  });
   $("#sHist").addEventListener("click",restoreSheet);
   $("#sDel").addEventListener("click",async e=>{
     const b=e.currentTarget;
@@ -2448,8 +2489,8 @@ function cfgSheet(){
 }
 
 /* tabs */
-function setTab(t){ tab=t;
-  if(STOCK_TABS.includes(t)) lastStockTab=t;
+function setTab(t){ tab=(isGuest()&&t==="esop")?"home":t;
+  if(STOCK_TABS.includes(tab)) lastStockTab=tab;
   render(); }
 
 /* ---------- boot ---------- */
@@ -2461,7 +2502,8 @@ function mountShell(){
   setMask(maskOn());
   $("#cfgBtn").addEventListener("click",cfgSheet);
   $("#searchBtn").addEventListener("click",searchSheet);
-  $("#fab").addEventListener("click",()=>{
+  const fb=$("#fab");
+  if(fb) fb.addEventListener("click",()=>{
     if(tab==="esop") esopGrantSheet();
     else if(tab==="mf") mfSheet();
     else addSheet();
@@ -2491,7 +2533,8 @@ function mountSetup(mode){
       const r=await fetch(BACKEND+"?u="+encodeURIComponent(u)+"&p="+encodeURIComponent(pin)+"&action=load");
       const j=await r.json();
       if(j.error) throw new Error(errMsg(j.error));
-      AUTH={u,p:pin}; try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e){}
+      AUTH={u,p:pin}; if(j.guest) AUTH.g=1;
+      try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e){}
       if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; } else { stocks={}; txns={}; }
       ready=true; live=true; cacheLocal();
       mountShell(); render(); pollQuotes();

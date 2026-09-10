@@ -98,11 +98,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .cagr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,178,116,.22)}
 .cagr .gain{color:#57D9A3}.cagr .loss{color:#F49790}
 
-.seg{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
 .seg button{padding:9px 0;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
 .seg button[aria-selected="true"]{background:var(--btn);color:var(--btn-ink)}
 .seg.sub{position:static;margin-top:10px;box-shadow:none;background:var(--surface2)}
-.seg.sub{grid-template-columns:repeat(4,1fr)}
 .seg.sub button{padding:8px 0;font-size:10.5px}
 .hlist{margin-top:12px;display:flex;flex-direction:column;gap:10px}
 .hrow{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:15px 16px;
@@ -427,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v61";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v62";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -709,7 +708,7 @@ function shellHTML(){
     '<section class="hero" id="hero"></section>'+
     '<div id="content"></div>'+
     (isGuest()?'<p class="hint" style="text-align:center;margin:18px 0 8px">View-only access · nothing you tap here changes the portfolio</p>':'')+'</div>'+
-    (isGuest()?'':'<button class="fab" id="fab" aria-label="Add">+</button>');
+    '<button class="fab" id="fab" aria-label="Add">+</button>';
 }
 const view=()=>tab==="home"?"home":(tab==="mf"?"mf":(tab==="esop"?"esop":"stocks"));
 /* privacy shutter: one tap hides every figure, your PIN brings them back */
@@ -722,6 +721,12 @@ function setMask(on){
   document.documentElement.classList.toggle("masked",on);
   if(ready){ render(); }
   const b=$("#eyeBtn"); if(b) b.innerHTML=on?EYE_OFF:EYE_ON;
+}
+function guestGuard(){   /* advisor sees the whole app, changes it nowhere */
+  if(!isGuest()) return false;
+  openSheet("View-only access",
+    '<p class="hint" style="margin-top:4px">This portfolio is shared with you for review. You can browse every tab, tap into any holding and change the period filters \u2014 but adding and editing are switched off.</p>');
+  return true;
 }
 function maskGuard(){   /* stored amounts stay hidden while the eye is on */
   if(!MASK) return false;
@@ -1221,6 +1226,7 @@ function refreshEsopCalc(key){
 }
 /* the four dashboard tiles, each editing exactly what drives it */
 function esopEditSheet(which){
+  if(guestGuard()) return;
   if(maskGuard()) return;
   const E=esops(), P=esopPool(), live=esopLivePx();
   const pick=(id,vals,cur)=>'<div class="chips" style="margin-top:8px">'+vals.map(v=>
@@ -1293,6 +1299,7 @@ function esopEditSheet(which){
 /* recompute one open calculator without rebuilding the page under the keyboard */
 /* ---------- ESOP sheets ---------- */
 function esopGrantSheet(id){
+  if(guestGuard()) return;
   if(id&&maskGuard()) return;
   const E=esops(), g=id?E.grants[id]:null, y=thisYear();
   openSheet(g?"Grant "+g.year:"Add ESOP grant",
@@ -1331,6 +1338,7 @@ function esopGrantSheet(id){
   });
 }
 function esopLotSheet(id,gid){
+  if(guestGuard()) return;
   if(maskGuard()) return;
   const E=esops(), l=id?E.lots[id]:null;
   gid=l?l.gid:gid;
@@ -1688,6 +1696,7 @@ function mfCustomHTML(){
 }
 /* sheets */
 function mfPlanSheet(kind,id){
+  if(guestGuard()) return;
   if(id&&maskGuard()) return;
   const items=kind==="sip"?mfSips():mfSwps(), it=id?items[id]:null;
   const F=Object.entries(mfunds());
@@ -1719,6 +1728,7 @@ function mfPlanSheet(kind,id){
   });
 }
 function mfTxSheet(id){
+  if(guestGuard()) return;
   if(id&&maskGuard()) return;
   const it=id?mfTxs()[id]:null;
   const F=Object.entries(mfunds());
@@ -1755,6 +1765,7 @@ function mfTxSheet(id){
 /* add or edit one fund - the scheme search fills code, name and NAV */
 let mfTimer=null, mfSeq=0;
 function mfSheet(id){
+  if(guestGuard()) return;
   if(id&&maskGuard()) return;
   const f=id?mfunds()[id]:null;
   let pick=f?{code:f.code,name:f.name,nav:f.nav}:null;
@@ -2152,6 +2163,7 @@ function bindResultTaps(){
 /* add stock */
 let addTimer=null, addSeq=0;
 function addSheet(preName,preSym){
+  if(guestGuard()) return;
   let pool="core", pick=preSym?{s:preSym,n:preName||""}:null, list=[];
   openSheet("Add stock",
     '<div class="togg full" id="poolT"><button aria-pressed="true" data-v="core">Core</button><button aria-pressed="false" data-v="ipo">'+POOL2+'</button></div>'+
@@ -2221,6 +2233,7 @@ function addSheet(preName,preSym){
 
 /* import */
 function importSheet(){
+  if(guestGuard()) return;
   openSheet("Import holdings",
     '<p class="hint" style="margin-top:4px">Paste rows — one buy per line, comma or tab separated:<br><span class="mono">Name, Date, Qty, Price</span> · date optional.</p>'+
     '<div class="f"><textarea id="impTxt" placeholder="HDFC Bank, 2025-04-15, 30, 1520&#10;TCS, 12-06-2025, 8, 3890"></textarea></div>'+
@@ -2278,6 +2291,7 @@ function parseImport(text){
 
 /* buy / sell */
 function txnSheet(id,side){
+  if(guestGuard()) return;
   const s=stocks[id], h=holding(id);
   openSheet((side==="buy"?"Buy":"Sell")+" · "+s.name,
     '<div class="togg full'+(side==="sell"?" sell":"")+'" id="sideT">'+
@@ -2317,6 +2331,7 @@ function txnSheet(id,side){
 
 /* edit stock: symbol, pool, manual prices, history */
 function histSheet(id){
+  if(guestGuard()) return;
   const s=stocks[id];
   const rows=stockTxns(id).reverse();
   openSheet("Edit · "+s.name,
@@ -2374,6 +2389,7 @@ function snapLabel(key,keep){
   return {t,s:days<=1?"":days+" days ago"};
 }
 async function restoreSheet(){
+  if(guestGuard()) return;
   openSheet("Earlier versions","<p class='hint' style='margin-top:4px'>Loading…</p>");
   let list=[];
   try{ const j=await fetch(api("action=snapshots")).then(r=>r.json()); list=j.snapshots||[]; }
@@ -2403,6 +2419,7 @@ async function restoreSheet(){
   });
 }
 function importBackupSheet(){
+  if(guestGuard()) return;
   openSheet("Use a saved copy",
     '<p class="hint" style="margin-top:4px">Open the file you saved earlier, copy everything in it, and paste it below.</p>'+
     '<div class="f"><label>Paste the file’s contents</label><textarea id="rTxt"></textarea></div>'+
@@ -2504,6 +2521,7 @@ function mountShell(){
   $("#searchBtn").addEventListener("click",searchSheet);
   const fb=$("#fab");
   if(fb) fb.addEventListener("click",()=>{
+    if(guestGuard()) return;
     if(tab==="esop") esopGrantSheet();
     else if(tab==="mf") mfSheet();
     else addSheet();
@@ -2535,7 +2553,10 @@ function mountSetup(mode){
       if(j.error) throw new Error(errMsg(j.error));
       AUTH={u,p:pin}; if(j.guest) AUTH.g=1;
       try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e){}
-      if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{}; } else { stocks={}; txns={}; }
+      if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
+        if(j.data.history) meta.history=j.data.history;
+        if(j.data.esops) meta.esops=j.data.esops;
+        if(j.data.mf) meta.mf=j.data.mf; } else { stocks={}; txns={}; }
       ready=true; live=true; cacheLocal();
       mountShell(); render(); pollQuotes();
     }catch(e){ $("#cGo").disabled=false; showErr("#cErr",e.message); }

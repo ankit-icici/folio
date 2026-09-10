@@ -242,3 +242,8 @@ and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-f
 560 px, safe-area insets). Keep it that way.
 
 - `renderHeroOnly()` (5s interval) has its OWN copy of the per-tab hero switch - a new tab's hero must be added BOTH in `render()` and `renderHeroOnly()`, else the hero blanks a few seconds after opening the tab (bit the Funds dashboard in v56).
+
+## Advisor (guest) access
+- Relay v11: a second per-account PIN stored as script property `g:<user>` (sha, same scheme as `u:<user>`). `auth_` returns `{guest:true}` for it; `load` strips `esops` server-side and tags the reply `guest:true`; every write (`save`, `setguest`, `unregister`) and `snapshots`/`snapshot` return `forbidden` for guests.
+- Owner sets/revokes it from Account -> "Advisor access" (POST `{action:'setguest',gp}`; empty gp revokes).
+- App: `AUTH.g` set at login from the reply; `isGuest()` hides the ESOP tab and the + button, no-ops saveRemote/saveNow, slims the Account sheet. The advisor logs in with the SAME username + the advisor PIN at the same URL.

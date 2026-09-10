@@ -1,20 +1,8 @@
 /* ------------------------------------------------------------------------
-   STALE TEMPLATE - do not treat as the live backend.
-
-   The deployed script is the source of truth. It has moved well past this
-   file (per-account login, snapshots, `search`, index symbols, the exchange
-   suffix rule). Read the live code in the Apps Script editor before changing
-   anything; see CLAUDE.md > Relay for the project id and the deploy steps.
+   Synced with the deployed script (Version 11, ping v:11) on 2026-09-10.
+   The Apps Script editor remains the source of truth - re-read it before
+   changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
-// Folio multi-user backend (v4) — deploy on YOUR OWN Google account to host
-// your own instance (script.google.com → paste → Deploy → Web app →
-// Execute as: Me → Who has access: Anyone → Authorize).
-//
-// Durability: every save of an existing account first snapshots the previous
-// state into a "Folio Backups" Drive folder (daily, kept 60 days) plus one permanent monthly archive that is never deleted, and a
-// save that would wipe most of an account's data is rejected unless the client
-// passes force:true (used only by the in-app Restore flow).
-
 var FILE_PREFIX='nivesh-acc-';
 var BK_FOLDER='Folio Backups';
 
@@ -30,9 +18,12 @@ function auth_(p){
   var u=normU_(p.u), pin=String(p.p||'');
   if(!u||pin.length<4) return {err:'unauthorized'};
   var rec=props_().getProperty('u:'+u);
+  if(!rec){fail_();return {err:'unauthorized'};}
   var h=sha_(u+':'+pin);
-  if(!rec||rec!==h){fail_();return {err:'unauthorized'};}
-  return {u:u,h:h};
+  if(h===rec) return {u:u,h:rec};
+  var g=props_().getProperty('g:'+u);          // advisor key: opens the owner's file, read-only, no esops
+  if(g&&h===g) return {u:u,h:rec,guest:true};
+  fail_();return {err:'unauthorized'};
 }
 function fileFor_(h){
   var name=FILE_PREFIX+h.slice(0,16)+'.json';
@@ -52,28 +43,54 @@ function snapshot_(h,f){
       body=f.getBlob().getDataAsString();
       fo.createFile(dname,body,'application/json');
     }
-    var mname='keep-'+h.slice(0,8)+'-'+mon+'.json';   // permanent monthly archive
+    var mname='keep-'+h.slice(0,8)+'-'+mon+'.json';
     if(!fo.getFilesByName(mname).hasNext()){
       if(body===null) body=f.getBlob().getDataAsString();
       fo.createFile(mname,body,'application/json');
     }
-    var cutoff=new Date(Date.now()-60*86400000);       // prune dailies only
+    var cutoff=new Date(Date.now()-60*86400000);
     var it=fo.getFiles();
     while(it.hasNext()){var g=it.next();var n=g.getName();
       if(n.indexOf('snap-'+h.slice(0,8)+'-')===0){var d=new Date(n.slice(-15,-5));if(!isNaN(d)&&d<cutoff)g.setTrashed(true);}}
   }catch(e){}
 }
+function quotes_(csv){
+  var syms=String(csv||'').split(',').filter(function(s){return s;}).slice(0,60);
+  if(!syms.length) return null;
+  var out={},missing=[],c=cache_();
+  syms.forEach(function(s){var v=c.get('q:'+s);if(v){out[s]=JSON.parse(v);}else{missing.push(s);}});
+  if(missing.length){
+    var reqs=missing.map(function(s){return {url:'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+(s.charAt(0)==='^'||s.indexOf('.')>0?'':'.NS')+'?interval=1d&range=5d',muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}};});
+    try{
+      var rs=UrlFetchApp.fetchAll(reqs);
+      rs.forEach(function(r,i){
+        try{
+          var j=JSON.parse(r.getContentText());
+          var cl=(j.chart.result[0].indicators.quote[0].close||[]).filter(function(x){return x!=null;});
+          if(cl.length>=2){var q={p:Math.round(cl[cl.length-1]*100)/100,pc:Math.round(cl[cl.length-2]*100)/100,t:Date.now()};out[missing[i]]=q;c.put('q:'+missing[i],JSON.stringify(q),30);}
+        }catch(err){}
+      });
+    }catch(err){}
+  }
+  return out;
+}
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:4});
+  if(p.action==='ping') return json_({ok:true,v:11});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
-  if(p.action==='login') return json_({ok:true,u:a.u});
+  if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
   if(p.action==='load'){
     var ff=fileFor_(a.h);
-    return json_({data:ff.f?JSON.parse(ff.f.getBlob().getDataAsString()):null,t:new Date().toISOString()});
+    var d=ff.f?JSON.parse(ff.f.getBlob().getDataAsString()):null;
+    if(a.guest&&d) delete d.esops;             // the advisor view never carries esops
+    var res={data:d,t:new Date().toISOString()};
+    if(a.guest) res.guest=true;
+    if(p.symbols){ var q=quotes_(p.symbols); if(q) res.quotes=q; }
+    return json_(res);
   }
+  if(a.guest) return json_({error:'forbidden'}); // snapshots/restore are owner-only
   if(p.action==='snapshots'){
     var fo=bkFolder_(),it=fo.getFiles(),out=[];
     while(it.hasNext()){var g=it.next();var n=g.getName();if(n.indexOf('snap-'+a.h.slice(0,8)+'-')===0||n.indexOf('keep-'+a.h.slice(0,8)+'-')===0)out.push(n);}
@@ -85,24 +102,48 @@ function doGet(e){
     var it2=bkFolder_().getFilesByName(nm);
     return it2.hasNext()?json_({data:JSON.parse(it2.next().getBlob().getDataAsString())}):json_({error:'no_snapshot'});
   }
-  if(p.action==='quotes'){
-    var syms=String(p.symbols||'').split(',').filter(function(s){return s;}).slice(0,60);
-    var out2={},missing=[],c=cache_();
-    syms.forEach(function(s){var v=c.get('q:'+s);if(v){out2[s]=JSON.parse(v);}else{missing.push(s);}});
-    if(missing.length){
-      var reqs=missing.map(function(s){return {url:'https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(s)+(s.charAt(0)==='^'||s.indexOf('.')>0?'':'.NS')+'?interval=1d&range=5d',muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}};});
+  if(p.action==='search'){
+    var q=String(p.q||'').trim();
+    if(q.length<2) return json_({results:[]});
+    var Q=q.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    var seen={},byRoot={},out=[];
+    /* NSE stays bare; a BSE-only listing keeps its .BO so quotes can resolve it */
+    function add(sym,nm){
+      if(!sym) return;
+      var suf=sym.slice(-3);
+      if(suf!=='.NS'&&suf!=='.BO') return;
+      var root=sym.slice(0,-3), nse=(suf==='.NS'), prev=byRoot[root];
+      if(prev&&(prev.nse||!nse)) return;
+      var N=String(nm||root).toUpperCase().replace(/[^A-Z0-9]/g,'');
+      var sc=0;
+      if(root.toUpperCase()===Q) sc+=100;
+      if(root.toUpperCase().indexOf(Q)===0) sc+=50;
+      if(N.indexOf(Q)===0) sc+=40; else if(N.indexOf(Q)>0) sc+=12;
+      if(/ETF|BEES|IETF|AMC-|INDEXFUND/.test(N)) sc-=30;
+      if(!nse) sc-=5;
+      var rec={s:(nse?root:sym),n:String(nm||root),x:(nse?'':'BSE'),sc:sc,nse:nse};
+      if(prev){ for(var i=0;i<out.length;i++) if(out[i]===prev){ out[i]=rec; break; } }
+      else out.push(rec);
+      byRoot[root]=rec;
+    }
+    try{
+      var u='https://query2.finance.yahoo.com/v1/finance/lookup?query='+encodeURIComponent(q)+'&type=equity&count=30&formatted=false&lang=en-IN&region=IN';
+      var j=JSON.parse(UrlFetchApp.fetch(u,{muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}}).getContentText());
+      var docs=(((j.finance||{}).result||[{}])[0]||{}).documents||[];
+      docs.forEach(function(x){ add(String(x.symbol||''), x.shortName||x.longName); });
+    }catch(err){}
+    if(out.length<3){
       try{
-        var rs=UrlFetchApp.fetchAll(reqs);
-        rs.forEach(function(r,i){
-          try{
-            var j=JSON.parse(r.getContentText());
-            var cl=(j.chart.result[0].indicators.quote[0].close||[]).filter(function(x){return x!=null;});
-            if(cl.length>=2){var q={p:Math.round(cl[cl.length-1]*100)/100,pc:Math.round(cl[cl.length-2]*100)/100};out2[missing[i]]=q;c.put('q:'+missing[i],JSON.stringify(q),45);}
-          }catch(err){}
-        });
+        var u2='https://query1.finance.yahoo.com/v1/finance/search?newsCount=0&quotesCount=25&enableFuzzyQuery=false&region=IN&lang=en-IN&q='+encodeURIComponent(q);
+        var j2=JSON.parse(UrlFetchApp.fetch(u2,{muteHttpExceptions:true,headers:{'User-Agent':'Mozilla/5.0'}}).getContentText());
+        (j2.quotes||[]).forEach(function(x){ if(x.quoteType==='EQUITY') add(String(x.symbol||''), x.shortname||x.longname); });
       }catch(err){}
     }
-    return json_({quotes:out2,t:new Date().toISOString()});
+    out.sort(function(a,b){return b.sc-a.sc;});
+    return json_({results:out.slice(0,12).map(function(x){return {s:x.s,n:x.n,x:x.x};})});
+  }
+  if(p.action==='quotes'){
+    return json_({quotes:quotes_(p.symbols)||{},t:new Date().toISOString()});
   }
   return json_({ok:true});
 }
@@ -121,6 +162,16 @@ function doPost(e){
   }
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
+  if(a.guest) return json_({error:'forbidden'});  // every write is owner-only
+  if(body.action==='setguest'){
+    var gp=String(body.gp||'');
+    if(!gp){ props_().deleteProperty('g:'+a.u); return json_({ok:true,guest:false}); }
+    if(gp.length<4) return json_({error:'pin_too_short'});
+    var gh=sha_(a.u+':'+gp);
+    if(gh===props_().getProperty('u:'+a.u)) return json_({error:'same_as_owner'});
+    props_().setProperty('g:'+a.u,gh);
+    return json_({ok:true,guest:true});
+  }
   if(body.action==='save'){
     var ff=fileFor_(a.h);
     var inc=body.data||{};

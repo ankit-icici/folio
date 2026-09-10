@@ -44,6 +44,11 @@ Backend actions (`?u=<username>&p=<pin>` on every authed call):
 - `GET action=quotes&symbols=A,B` → live NSE prices, server-cached 45 s
 - `GET action=snapshots` / `GET action=snapshot&day=YYYY-MM-DD|YYYY-MM` → restore points
 - `POST {action:'register'}` / `{action:'save', data, force?}` / `{action:'unregister'}`
+- `POST {action:'setguest', gp}` — set/revoke the account's view-only advisor PIN (empty `gp` revokes)
+
+Deployed relay is **Version 14 / ping `v:14`**. A *guest* (advisor-PIN) session may read
+`load`, `search` and `quotes` only; `snapshots`/`snapshot` and every POST return `forbidden`,
+and its `load` has `esops` plus every `priv` fund (with their sips/swps/txs) deleted server-side.
 
 Data shape (one document per account):
 
@@ -154,6 +159,36 @@ meta.esops = {
   outlive the session. `refreshEsopCalc()` updates the PAT cell and the open box **in place**;
   a full `render()` on every keystroke steals focus mid-typing.
 
+### Mutual funds (Funds tab)
+
+```js
+meta.mf = {
+  funds: { id: {name, code, units, inv, nav, navDate, prevNav?, who?, priv?} },
+  sips:  { id: {fid, amt, day} },
+  swps:  { id: {fid, amt, day, to?} },      // `to` = fund the payout buys into
+  txs:   { id: {fid, kind:'sip'|'swp'|'in'|'out', amt, date} }
+}
+```
+
+- `inv` is the **cost basis of the units still held**, not lifetime money in. Lifetime money in
+  lives in `txs`. Both matter: the card's P&L is `units*nav - inv`, while the CAGR reads `txs`.
+- NAVs come from `api.mfapi.in/mf/<code>/latest` straight from the client (CORS `*`),
+  at most every 6 h; `prevNav` rolls when `navDate` changes, which is what day P&L reads.
+- **Ownership rule:** `mfPersonal = f => !(f.who==="HUF")`. `mfTotals()` and `mfReturns()`
+  cover personal funds only — HUF money is a different entity and joins no dashboard figure
+  and no return. `hufTotals()` exists for the Portfolio card alone.
+- `mfXirr(flows, cur)` is the shared money-weighted engine (bisection, 365.25 d). It appends a
+  terminal value only when `cur > 0`, so a **fully redeemed fund still returns a realised
+  lifetime CAGR**; it needs flows of both signs and at least 90 days of history, else `null`.
+- `mfFundCagr(id)` per fund, `mfReturns()` across personal funds, `combinedCagr()` over stock
+  cash flows + personal fund flows for Home.
+- **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
+  pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
+  Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in
+  Portfolio's "Closed · fully redeemed" group. The fund sheet's Delete is only for an entry
+  added by mistake and purges that fund's txs/sips/swps with it. The Lumpsum diary never
+  moves units.
+
 ## Data durability (do not weaken)
 
 1. Server rejects any save that zeroes out stocks or drops >50% of transactions
@@ -233,6 +268,21 @@ signed-in page (`api()`, `stocks`, `txns` are all in scope), e.g.
 - Mobile first: transaction rows are two lines (name + chip, then date · qty × price) with the
   amount on the right. Five-column table layouts truncate names to "He…" on a phone.
 
+### Importing a broker's history
+
+Read the broker's own **order/transaction ledger** before modelling anything. Do not
+reconstruct a history by fitting NAV series to current units: current units only reflect what
+survived, so any past redemption is invisible to the fit. That mistake put a 5.8-year SIP
+(69 instalments, ₹2.11 L in, four redemptions, ₹2.05 L out) into the app as 19 instalments with
+no redemptions, turning a genuine **+17.5 %** lifetime XIRR into **-1.8 %**.
+
+Groww specifics: the ledger is **All orders → Mutual Funds** (`/user/order/mutual-funds`), and
+it **lazy-loads** — scroll until `document.body.scrollHeight` stops growing, else you silently
+get only the newest ~20 rows. Its dashboard shows three unlike numbers at once (a portfolio
+XIRR tile, a per-fund XIRR column, and your actual total return); only the last is arithmetic
+on your own money, and a positive XIRR alongside a below-cost holding always means past
+redemptions. Redemption rows may be denominated in **units**, needing that date's NAV to value.
+
 ## Design language
 
 Ivory/near-black surfaces, restrained gold accent, Instrument Serif (wordmark, sheet titles),
@@ -243,11 +293,13 @@ and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-f
 
 - `renderHeroOnly()` (5s interval) has its OWN copy of the per-tab hero switch - a new tab's hero must be added BOTH in `render()` and `renderHeroOnly()`, else the hero blanks a few seconds after opening the tab (bit the Funds dashboard in v56).
 
-## Advisor (guest) access
+## Advisor (guest) access & privacy
 - Relay v11: a second per-account PIN stored as script property `g:<user>` (sha, same scheme as `u:<user>`). `auth_` returns `{guest:true}` for it; `load` strips `esops` server-side and tags the reply `guest:true`; every write (`save`, `setguest`, `unregister`) and `snapshots`/`snapshot` return `forbidden` for guests.
 - Owner sets/revokes it from Account -> "Advisor access" (POST `{action:'setguest',gp}`; empty gp revokes).
 - Lockout gotcha (relay v13): the brute-force guard used ONE global 'fails' counter (>30 in 10 min = every login refused, owner included). The app re-prices every 15s, so a single device holding a revoked/changed PIN burned 4 strikes a minute and locked the account out. v13 counts per account (`fu:<user>`, >20) and each distinct wrong credential (`fh:<hash>`) adds only its FIRST failure, so a looping stale device costs 1 strike. `clearLock()` in the editor clears the counters. Client v65: `authGone()` stops the polls - 'locked' backs off 5 min, 'unauthorized' signs out to the login screen.
 - Partial/full fund redemption (v67): `mfRedeemSheet(id)` is the only correct way out - it cuts units, releases cost basis pro-rata (average cost), and writes an `out` tx so XIRR sees the money back. A full redemption leaves the fund at units 0 / inv 0 (closed) so its flows keep counting; the fund sheet's Delete now also purges that fund's txs/sips/swps and is only for entries added by mistake. The Lumpsum diary never moves units.
+- Home's `+` opens `addWhatSheet()` (stock or fund) because Home holds both kinds; Stocks/Funds/ESOP tabs go straight to their own add sheet.
+- `guestGuard()` fronts every mutating sheet, so the advisor keeps the whole UI (including the `+`) but each editing door answers "View-only access". `maskGuard()` does the same while the privacy shutter is on.
 - Private funds (relay v14): a fund with `priv:1` in `meta.mf.funds` is deleted from every GUEST load, along with its sips/swps/txs (and a swp's `to` is dropped if it pointed at one). The advisor's app therefore computes every figure - value, invested, P&L, Abs, CAGR - without it. Owner sees it normally, tagged PRIVATE in Portfolio; toggle lives in the fund sheet.
 - Relay v12: guests KEEP `search` and `quotes` (public market data) - only `snapshots`/`snapshot` and every POST are owner-only. v11 gated all of doGet after `load`, which silently killed stock search in the advisor view (client showed "Nothing found").
 - App: `AUTH.g` set at login from the reply; `isGuest()` hides the ESOP tab and the + button, no-ops saveRemote/saveNow, slims the Account sheet. The advisor logs in with the SAME username + the advisor PIN at the same URL.

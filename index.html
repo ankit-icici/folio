@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v68";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v69";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1412,7 +1412,7 @@ function mfWrite(fn){
 function mfTotals(){          /* personal funds only - the HUF entity never joins a return */
   let inv=0,cur=0,day=0,dayBase=0;
   for(const f of Object.values(mfunds())){
-    if(!mfPersonal(f)) continue;
+    if(!mfCounted(f)) continue;
     const u=+f.units||0, nav=+f.nav||0;
     inv+=+f.inv||0; cur+=u*nav;
     if(+f.prevNav>0){ day+=u*(nav-f.prevNav); dayBase+=u*f.prevNav; }
@@ -1423,20 +1423,32 @@ function mfTotals(){          /* personal funds only - the HUF entity never join
 function hufTotals(){
   let inv=0,cur=0;
   for(const f of Object.values(mfunds())){
-    if(mfPersonal(f)) continue;
+    if(f.who!=="HUF") continue;
     inv+=+f.inv||0; cur+=(+f.units||0)*(+f.nav||0);
   }
   return {inv,cur};
 }
-const mfPersonal=f=>!(f.who==="HUF");   /* returns cover every fund except HUF-held ones */
+function privTotals(){          /* shown on its own, never folded into a total */
+  let inv=0,cur=0;
+  for(const f of Object.values(mfunds())){
+    if(!mfPrivate(f)) continue;
+    inv+=+f.inv||0; cur+=(+f.units||0)*(+f.nav||0);
+  }
+  return {inv,cur};
+}
+/* what joins a total or a return: not HUF money, and not a fund kept private.
+   A private fund is deliberately outside every aggregate on both sides, so the
+   owner's dashboards keep matching the advisor's official app figure for figure. */
+const mfCounted=f=>!(f.who==="HUF")&&!f.priv;
+const mfPrivate=f=>!!f.priv;
 function mfReturns(){
   const F=mfunds(); let inv=0,cur=0;
-  for(const f of Object.values(F)){ if(!mfPersonal(f)) continue;
+  for(const f of Object.values(F)){ if(!mfCounted(f)) continue;
     inv+=+f.inv||0; cur+=(+f.units||0)*(+f.nav||0); }
   /* money-weighted return over every recorded personal transaction, valued at the last NAV */
   const flows=[];
   for(const t of Object.values(mfTxs())){
-    const f=F[t.fid]; if(!f||!mfPersonal(f)) continue;
+    const f=F[t.fid]; if(!f||!mfCounted(f)) continue;
     const ms=Date.parse(t.date+"T00:00:00"); if(!isFinite(ms)) continue;
     flows.push([ms,(t.kind==="swp"||t.kind==="out"?1:-1)*(+t.amt||0)]);
   }
@@ -1493,9 +1505,9 @@ function combinedCagr(){
     flows.push([ms,(f.side==="sell"?1:-1)*f.amt]);
   }
   const F=mfunds(); let mfCur=0;
-  for(const fu of Object.values(F)) if(mfPersonal(fu)) mfCur+=(+fu.units||0)*(+fu.nav||0);
+  for(const fu of Object.values(F)) if(mfCounted(fu)) mfCur+=(+fu.units||0)*(+fu.nav||0);
   for(const t of Object.values(mfTxs())){
-    const fund=F[t.fid]; if(!fund||!mfPersonal(fund)) continue;
+    const fund=F[t.fid]; if(!fund||!mfCounted(fund)) continue;
     const ms=Date.parse(t.date+"T00:00:00"); if(!isFinite(ms)) continue;
     flows.push([ms,(t.kind==="swp"||t.kind==="out"?1:-1)*(+t.amt||0)]);
   }
@@ -1523,7 +1535,7 @@ function homeHeroHTML(t){
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
     (()=>{const c=combinedCagr();
       const F=mfunds(); let mInv=0,mCur=0;
-      for(const f of Object.values(F)) if(mfPersonal(f)){ mInv+=+f.inv||0; mCur+=(+f.units||0)*(+f.nav||0); }
+      for(const f of Object.values(F)) if(mfCounted(f)){ mInv+=+f.inv||0; mCur+=(+f.units||0)*(+f.nav||0); }
       const inv0=t.inv+mInv, ab=inv0>0?(t.cur+mCur-inv0)/inv0*100:0;
       return '<div class="cagr"><span class="hk" style="margin:0">Abs '+
         '<b class="mono '+cls(ab)+'" style="font-size:15px;font-weight:600"> '+sgn(ab)+Math.abs(ab).toFixed(1)+'%</b></span>'+
@@ -1540,7 +1552,7 @@ function homeHTML(t){
     '<span class="mono '+cls(pl)+'">'+skfmt(pl)+' ('+spct(plPct)+')</span></div>'+
     '<span class="chev">›</span></button>';
   const nStocks=all().length;
-  const nFunds=Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length;
+  const nFunds=Object.values(mfunds()).filter(f=>mfCounted(f)&&(+f.units||0)>0).length;
   return '<div class="hlist">'+
     row("stocks","Stocks",t.cur,t.pl,t.plPct,nStocks+" holdings · live NSE prices")+
     row("mf","Mutual funds",m.cur,m.pl,m.plPct,nFunds?nFunds+" funds · NAV updates daily":"tap to add funds")+
@@ -1557,7 +1569,7 @@ function mfHeroHTML(){
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(m.inv)+'</div></div>'+
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+'</div></div>'+
     '</div>'+
-    '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length+' funds</span>'+
+    '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfCounted(f)&&(+f.units||0)>0).length+' funds</span>'+
       '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span></div>'+
     '<div class="cagr"><span class="hk" style="margin:0">Abs '+
       '<b class="mono '+cls(R.absPct)+'" style="font-size:15px;font-weight:600"> '+sgn(R.absPct)+Math.abs(R.absPct).toFixed(1)+'%</b></span>'+
@@ -1633,12 +1645,17 @@ function mfPortHTML(){
       kv("CAGR",(cg===null?'—':'<span class="'+cls(cg)+'">'+spct(cg)+'</span>'))+
       '</div></div>'+(mfSel===id?mfFundTxHTML(id):"");
   };
-  const per=F.filter(([,f])=>f.who!=="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
-  const huf=F.filter(([,f])=>f.who==="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
+  const byVal=(a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav);
+  const per=F.filter(([,f])=>mfCounted(f)).sort(byVal);
+  const huf=F.filter(([,f])=>f.who==="HUF"&&!mfPrivate(f)).sort(byVal);
+  const prv=F.filter(([,f])=>mfPrivate(f)).sort(byVal);
   return (per.length?'<div class="secthead">Personal</div><div class="list" style="margin-top:10px">'+per.map(card).join("")+'</div>':"")+
     (huf.length?'<div class="secthead">HUF</div><div class="list" style="margin-top:10px">'+huf.map(card).join("")+'</div>':"")+
+    (prv.length?'<div class="secthead">Private · outside every total</div><div class="list" style="margin-top:10px">'+prv.map(card).join("")+'</div>':"")+
     (CL.length?'<div class="secthead">Closed · fully redeemed</div><div class="list" style="margin-top:10px">'+CL.map(shut).join("")+'</div>':"")+
-    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions, tap again to collapse. Closed funds keep counting towards your lifetime returns. NAVs refresh from AMFI once a day.</p>';
+    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions, tap again to collapse. Closed funds keep counting towards your lifetime returns. '+
+      (prv.length?'Private funds are tracked here but excluded from every dashboard figure and return, so your numbers match your advisor\u2019s app. ':'')+
+      'NAVs refresh from AMFI once a day.</p>';
 }
 function mfHTML(){
   if(mfTab==="port") return mfPortHTML();
@@ -1668,16 +1685,20 @@ function mfTxOnlyHTML(){
 function mfPlansHTML(kind){
   const F=mfunds(), items=kind==="sip"?mfSips():mfSwps();
   const rows=Object.entries(items).sort((a,b)=>(+a[1].day||0)-(+b[1].day||0));
-  const tot=rows.reduce((a,[,x])=>a+(+x.amt||0),0);
+  const cnt=([,x])=>{const f=F[x.fid]; return f?mfCounted(f):true;};
+  const tot=rows.filter(cnt).reduce((a,[,x])=>a+(+x.amt||0),0);
+  const pTot=rows.filter(r=>!cnt(r)).reduce((a,[,x])=>a+(+x.amt||0),0);
   return '<div class="secthead rh">Active '+kind.toUpperCase()+'s'+(tot?' · '+rupee(tot)+' ∕ month':'')+
     '<button class="linky" data-mfadd="'+kind+'">Add '+kind.toUpperCase()+'</button></div>'+
     (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
       const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to];
       return '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
-        '<div class="el"><b>'+esc(f.name)+(t?' <em class="into">→ '+esc(t.name)+'</em>':"")+'</b>'+
+        '<div class="el"><b>'+esc(f.name)+(t?' <em class="into">→ '+esc(t.name)+'</em>':"")+
+          (mfPrivate(f)?' <span class="tag s">PRIVATE</span>':"")+'</b>'+
         '<span>on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':'')+'</span></div>'+
         '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>';}).join("")+'</div>'
-    :'<p class="hint">None recorded.</p>');
+    :'<p class="hint">None recorded.</p>')+
+    (pTot?'<p class="hint" style="padding:0 4px">Plus '+rupee(pTot)+' ∕ month on private funds, left out of the total above.</p>':"");
 }
 const ord=n=>n+(n%10===1&&n%100!==11?"st":n%10===2&&n%100!==12?"nd":n%10===3&&n%100!==13?"rd":"th");
 /* one-off deposits and withdrawals - a diary with the same periods Flows uses */
@@ -1874,7 +1895,7 @@ function mfSheet(id){
     '<div class="f"><label>Holder tag (optional)</label><input id="mW" placeholder="e.g. HUF" value="'+esc(f&&f.who?f.who:"")+'"></div>'+
     '<div class="togg full" id="mPriv"><button aria-pressed="'+(!(f&&f.priv))+'" data-v="0">Shared with advisor</button>'+
       '<button aria-pressed="'+(!!(f&&f.priv))+'" data-v="1">Private to me</button></div>'+
-    '<p class="hint" style="margin-top:6px">A private fund never leaves your login: every figure your advisor sees is worked out without it.</p>'+
+    '<p class="hint" style="margin-top:6px">A private fund never leaves your login, and it stays out of every total and return on <b>both</b> sides — so your dashboards keep matching your advisor\u2019s app. You still see the fund and its own CAGR in Portfolio.</p>'+
     '<div class="err" id="mErr"></div>'+
     '<button class="primary" id="mGo">'+(f?"Save":"Add")+'</button>'+
     (f?'<button class="ghost" id="mRed" style="margin-top:14px">Redeem or withdraw from this fund</button>'+

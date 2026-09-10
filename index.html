@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v59";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v60";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -718,6 +718,11 @@ function setMask(on){
   document.documentElement.classList.toggle("masked",on);
   if(ready){ render(); }
   const b=$("#eyeBtn"); if(b) b.innerHTML=on?EYE_OFF:EYE_ON;
+}
+function maskGuard(){   /* stored amounts stay hidden while the eye is on */
+  if(!MASK) return false;
+  openSheet("Values hidden",'<p class="hint">Amounts are hidden. Tap the eye and enter your PIN to unhide before viewing or editing these details.</p>');
+  return true;
 }
 function eyeTap(){
   if(!maskOn()){ setMask(true); return; }
@@ -1212,6 +1217,7 @@ function refreshEsopCalc(key){
 }
 /* the four dashboard tiles, each editing exactly what drives it */
 function esopEditSheet(which){
+  if(maskGuard()) return;
   const E=esops(), P=esopPool(), live=esopLivePx();
   const pick=(id,vals,cur)=>'<div class="chips" style="margin-top:8px">'+vals.map(v=>
     '<button aria-pressed="'+(+cur===v)+'" data-pk="'+id+'" data-v="'+v+'">'+v+'%</button>').join("")+'</div>';
@@ -1283,6 +1289,7 @@ function esopEditSheet(which){
 /* recompute one open calculator without rebuilding the page under the keyboard */
 /* ---------- ESOP sheets ---------- */
 function esopGrantSheet(id){
+  if(id&&maskGuard()) return;
   const E=esops(), g=id?E.grants[id]:null, y=thisYear();
   openSheet(g?"Grant "+g.year:"Add ESOP grant",
     '<div class="f2"><div class="f"><label>Grant year</label><input id="gY" class="mono" inputmode="numeric" value="'+(g?g.year:y)+'"></div>'+
@@ -1320,6 +1327,7 @@ function esopGrantSheet(id){
   });
 }
 function esopLotSheet(id,gid){
+  if(maskGuard()) return;
   const E=esops(), l=id?E.lots[id]:null;
   gid=l?l.gid:gid;
   const g=E.grants[gid]||{};
@@ -1676,6 +1684,7 @@ function mfCustomHTML(){
 }
 /* sheets */
 function mfPlanSheet(kind,id){
+  if(id&&maskGuard()) return;
   const items=kind==="sip"?mfSips():mfSwps(), it=id?items[id]:null;
   const F=Object.entries(mfunds());
   if(!F.length){ openSheet("Add "+kind.toUpperCase(),'<p class="hint">Add a fund first.</p>'); return; }
@@ -1706,6 +1715,7 @@ function mfPlanSheet(kind,id){
   });
 }
 function mfTxSheet(id){
+  if(id&&maskGuard()) return;
   const it=id?mfTxs()[id]:null;
   const F=Object.entries(mfunds());
   if(!F.length){ openSheet("Add entry",'<p class="hint">Add a fund first.</p>'); return; }
@@ -1741,6 +1751,7 @@ function mfTxSheet(id){
 /* add or edit one fund - the scheme search fills code, name and NAV */
 let mfTimer=null, mfSeq=0;
 function mfSheet(id){
+  if(id&&maskGuard()) return;
   const f=id?mfunds()[id]:null;
   let pick=f?{code:f.code,name:f.name,nav:f.nav}:null;
   openSheet(f?"Edit fund":"Add mutual fund",

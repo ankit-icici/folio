@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v65";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v66";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1603,7 +1603,8 @@ function mfPortHTML(){
     const u=+f.units||0,nav=+f.nav||0,cur=u*nav,inv=+f.inv||0,pl=cur-inv;
     const d=+f.prevNav>0?(nav-f.prevNav)/f.prevNav*100:null;
     return '<div class="card mfc" data-mfund="'+id+'"><div class="chead">'+
-      '<div class="t">'+esc(f.name)+'</div><span class="sp"></span>'+
+      '<div class="t">'+esc(f.name)+'</div>'+
+      (f.priv?'<span class="tag s">PRIVATE</span>':"")+'<span class="sp"></span>'+
       (d!==null?'<span class="dpill mono '+(d>=0?"g":"l")+'">'+spct(d)+'</span>':"")+'</div>'+
       '<div class="g9 mono">'+
       kv("Units",qfmt(u,3))+
@@ -1790,9 +1791,16 @@ function mfSheet(id){
     '<div class="f2"><div class="f"><label>Units</label><input id="mU" class="mono" inputmode="decimal" value="'+(f?f.units:"")+'"></div>'+
     '<div class="f"><label>Amount invested</label><input id="mI" class="mono" inputmode="decimal" value="'+(f?f.inv:"")+'"></div></div>'+
     '<div class="f"><label>Holder tag (optional)</label><input id="mW" placeholder="e.g. HUF" value="'+esc(f&&f.who?f.who:"")+'"></div>'+
+    '<div class="togg full" id="mPriv"><button aria-pressed="'+(!(f&&f.priv))+'" data-v="0">Shared with advisor</button>'+
+      '<button aria-pressed="'+(!!(f&&f.priv))+'" data-v="1">Private to me</button></div>'+
+    '<p class="hint" style="margin-top:6px">A private fund never leaves your login: every figure your advisor sees is worked out without it.</p>'+
     '<div class="err" id="mErr"></div>'+
     '<button class="primary" id="mGo">'+(f?"Save":"Add")+'</button>'+
     (f?'<button class="ghost" id="mDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Redeemed — remove this fund</button>':""));
+  let priv=!!(f&&f.priv);
+  $("#mPriv").addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return;
+    priv=b.dataset.v==="1";
+    $("#mPriv").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
   const drawPick=()=>{const el=$("#mPick"); if(!el) return;
     el.innerHTML=pick?'<div class="picked"><span class="ok">✓</span> <b>'+esc(pick.name)+'</b>'+
       (pick.nav?'<span class="pl">NAV '+price(+pick.nav)+'</span>':"")+'</div>'
@@ -1827,7 +1835,7 @@ function mfSheet(id){
     const u=parseFloat($("#mU").value), inv=parseFloat($("#mI").value), who=$("#mW").value.trim();
     if(!name||!(u>0)||!(inv>=0)) return showErr("#mErr","Fund, units and amount invested are required.");
     mfWrite(M=>{const k=id||uid(); const old=M.funds[k]||{};
-      M.funds[k]={...old,name,units:u,inv,who:who||undefined,
+      M.funds[k]={...old,name,units:u,inv,who:who||undefined,priv:priv?1:undefined,
         ...(pick?{code:pick.code,...(pick.nav?{nav:pick.nav,navDate:pick.navDate||old.navDate}:{})}:{})};});
     mfSyncAt=0; closeSheet(); setTab("mf"); mfSyncNav();
   });
@@ -2178,6 +2186,14 @@ function bindResultTaps(){
 
 /* add stock */
 let addTimer=null, addSeq=0;
+function addWhatSheet(){          /* Home holds both kinds, so ask which one */
+  openSheet("Add",
+    '<p class="hint" style="margin-top:4px">What are you adding?</p>'+
+    '<button class="primary" id="awS">A stock</button>'+
+    '<button class="ghost" id="awM" style="margin-top:12px">A mutual fund</button>');
+  $("#awS").addEventListener("click",()=>{closeSheet(); addSheet();});
+  $("#awM").addEventListener("click",()=>{closeSheet(); mfSheet();});
+}
 function addSheet(preName,preSym){
   if(guestGuard()) return;
   let pool="core", pick=preSym?{s:preSym,n:preName||""}:null, list=[];
@@ -2540,6 +2556,7 @@ function mountShell(){
     if(guestGuard()) return;
     if(tab==="esop") esopGrantSheet();
     else if(tab==="mf") mfSheet();
+    else if(tab==="home") addWhatSheet();
     else addSheet();
   });
   $("#seg").addEventListener("click",e=>{

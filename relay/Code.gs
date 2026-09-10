@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------
-   Synced with the deployed script (Version 13, ping v:13) on 2026-09-10.
+   Synced with the deployed script (Version 14, ping v:14) on 2026-09-10.
    The Apps Script editor remains the source of truth - re-read it before
    changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
@@ -94,14 +94,24 @@ function quotes_(csv){
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:13});
+  if(p.action==='ping') return json_({ok:true,v:14});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
   if(p.action==='load'){
     var ff=fileFor_(a.h);
     var d=ff.f?JSON.parse(ff.f.getBlob().getDataAsString()):null;
-    if(a.guest&&d) delete d.esops;             // the advisor view never carries esops
+    if(a.guest&&d){                            /* the advisor view carries neither esops nor private funds */
+      delete d.esops;
+      if(d.mf&&d.mf.funds){
+        var pv={};
+        for(var k in d.mf.funds) if(d.mf.funds[k].priv){ pv[k]=1; delete d.mf.funds[k]; }
+        if(d.mf.sips) for(var k2 in d.mf.sips) if(pv[d.mf.sips[k2].fid]) delete d.mf.sips[k2];
+        if(d.mf.swps) for(var k3 in d.mf.swps){ var w=d.mf.swps[k3];
+          if(pv[w.fid]) delete d.mf.swps[k3]; else if(w.to&&pv[w.to]) delete w.to; }
+        if(d.mf.txs) for(var k4 in d.mf.txs) if(pv[d.mf.txs[k4].fid]) delete d.mf.txs[k4];
+      }
+    }
     var res={data:d,t:new Date().toISOString()};
     if(a.guest) res.guest=true;
     if(p.symbols){ var q=quotes_(p.symbols); if(q) res.quotes=q; }

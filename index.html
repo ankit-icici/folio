@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v50";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v51";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -477,10 +477,12 @@ function cycleTheme(){
 function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta,idx}));}catch(e){} }
 async function saveNow(force){
   try{
+    const body=JSON.stringify({action:"save",force:force===true,
+      data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),...(meta.mf?{mf:meta.mf}:{}),savedAt:new Date().toISOString()}});
+    /* keepalive lets the save finish after the tab hides, but the browser rejects
+       keepalive bodies over 64KB outright - a large document must go without it */
     const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
-      body:JSON.stringify({action:"save",force:force===true,
-        data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),...(meta.mf?{mf:meta.mf}:{}),savedAt:new Date().toISOString()}}),
-      keepalive:true});                    /* survives the tab being hidden mid-flight */
+      body,keepalive:body.length<60000});
     const j=await r.json(); pendingSave=!j.saved;
     if(j.error==="suspicious_save"){
       const st=$("#status");

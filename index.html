@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v63";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v64";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2132,6 +2132,7 @@ async function runSearch(q){
   try{
     const j=await fetch(api("action=search&q="+encodeURIComponent(q))).then(r=>r.json());
     if(mine!==searchSeq) return;
+    if(j.error){ $("#qOut").innerHTML='<p class="hint">Search isn\u2019t available on this login.</p>'; return; }
     list=j.results||[];
   }catch(e){
     if(mine===searchSeq) $("#qOut").innerHTML='<p class="hint">Couldn’t reach the market feed. Try again.</p>';

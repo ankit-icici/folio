@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v62";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v63";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -829,19 +829,22 @@ function heroHTML(t){
     '<div class="hgrid">'+
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(t.cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(t.inv)+'</div></div>'+
-      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(t.pl)+'">'+skfmt(t.pl)+' <small>('+spct(t.plPct)+')</small></div></div>'+
+      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(t.pl)+'">'+skfmt(t.pl)+'</div></div>'+
       '<div class="r"><div class="hk">Day P&L</div><div class="hv mono '+cls(t.day)+'">'+skfmt(t.day)+' <small>('+spct(t.dayPct)+')</small></div></div>'+
     '</div>'+
     '<div class="gl"><span><b>'+g+'</b> Gainers</span>'+liveTag+'<span><b>'+l+'</b> Losers</span></div>'+
     (tot>0?'<div class="glbar"><i class="g" style="width:'+(g/tot*100)+'%"></i><i class="l"></i></div>':"")+
-    cagrHTML()+
+    cagrHTML(t)+
   '</div>';
 }
-function cagrHTML(){
-  const x=xirr(); if(!x) return "";
-  return '<div class="cagr"><span class="hk" style="margin:0">CAGR</span>'+
-    '<span class="mono '+(x.rate>=0?"gain":"loss")+'" style="font-size:15px;font-weight:600">'+
-    sgn(x.rate)+Math.abs(x.rate).toFixed(1)+'%</span></div>';
+function cagrHTML(t){
+  const x=xirr(), ab=t&&t.inv>0?t.plPct:null;
+  const chip=v=>'<b class="mono '+cls(v)+'" style="font-size:15px;font-weight:600"> '+sgn(v)+Math.abs(v).toFixed(1)+'%</b>';
+  if(ab===null&&!x) return "";
+  return '<div class="cagr"><span class="hk" style="margin:0">Abs '+
+    (ab===null?'<b class="mono" style="font-size:15px">—</b>':chip(ab))+'</span>'+
+    '<span class="hk" style="margin:0">CAGR '+
+    (x?chip(x.rate):'<b class="mono" style="font-size:15px">—</b>')+'</span></div>';
 }
 const kv=(k,v,r)=>'<div class="kv'+(r?" r":"")+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
 function cardHTML(x,coreInv){
@@ -1500,7 +1503,7 @@ function homeHeroHTML(t){
     '<div class="hgrid">'+
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(inv)+'</div></div>'+
-      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(pl)+'">'+skfmt(pl)+' <small>('+spct(inv>0?pl/inv*100:0)+')</small></div></div>'+
+      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(pl)+'">'+skfmt(pl)+'</div></div>'+
     '</div>'+
     '<div class="gl"><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
@@ -1538,7 +1541,7 @@ function mfHeroHTML(){
     '<div class="hgrid">'+
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(m.cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(m.inv)+'</div></div>'+
-      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+' <small>('+spct(m.plPct)+')</small></div></div>'+
+      '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+'</div></div>'+
     '</div>'+
     '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length+' funds</span>'+
       '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span></div>'+

@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v67";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v68";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1444,10 +1444,12 @@ function mfReturns(){
   return {inv,cur,absPct:inv>0?(cur-inv)/inv*100:0,cagr};
 }
 function mfXirr(flows,cur){   /* money-weighted annual rate; null when too young to annualize */
-  if(flows.length<2||!(cur>0)) return null;
+  if(flows.length<2) return null;
   const t0=Math.min(...flows.map(x=>x[0]));
   if(Date.now()-t0<90*864e5) return null;
-  const fl=flows.concat([[Date.now(),cur]]);
+  /* an exited fund has no value left to add - its redemptions are the return */
+  const fl=(+cur>0)?flows.concat([[Date.now(),cur]]):flows.slice();
+  if(!fl.some(x=>x[1]<0)||!fl.some(x=>x[1]>0)) return null;
   const npv=r=>fl.reduce((a,[ms,v])=>a+v/Math.pow(1+r,(ms-t0)/(365.25*864e5)),0);
   let lo=-0.9,hi=3;
   for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
@@ -1599,7 +1601,9 @@ function mfChipsHTML(){
 }
 function mfPortHTML(){
   const F=Object.entries(mfunds()).filter(([,f])=>(+f.units||0)>0);
-  if(!F.length) return '<div class="empty"><b>No mutual funds yet</b>Tap + to add one.</div>';
+  const TX=Object.values(mfTxs());
+  const CL=Object.entries(mfunds()).filter(([id,f])=>!((+f.units||0)>0)&&TX.some(t=>t.fid===id));
+  if(!F.length&&!CL.length) return '<div class="empty"><b>No mutual funds yet</b>Tap + to add one.</div>';
   const card=([id,f])=>{
     const u=+f.units||0,nav=+f.nav||0,cur=u*nav,inv=+f.inv||0,pl=cur-inv;
     const d=+f.prevNav>0?(nav-f.prevNav)/f.prevNav*100:null;
@@ -1615,11 +1619,26 @@ function mfPortHTML(){
       kv("CAGR",(cg=>cg===null?'—':'<span class="'+cls(cg)+'">'+spct(cg)+'</span>')(mfFundCagr(id)),1)+
       '</div></div>'+(mfSel===id?mfFundTxHTML(id):"");
   };
+  const shut=([id,f])=>{
+    let inn=0,out=0;
+    for(const t of TX){ if(t.fid!==id) continue;
+      if(t.kind==="out"||t.kind==="swp") out+=+t.amt||0; else inn+=+t.amt||0; }
+    const cg=mfFundCagr(id), net=out-inn;
+    return '<div class="card mfc" data-mfund="'+id+'"><div class="chead">'+
+      '<div class="t">'+esc(f.name)+'</div><span class="tag">CLOSED</span><span class="sp"></span></div>'+
+      '<div class="g9 mono">'+
+      kv("Total put in",rupee(inn))+
+      kv("Taken out",rupee(out))+
+      kv("Net",'<span class="'+cls(net)+'">'+smoney(net)+'</span>',1)+
+      kv("CAGR",(cg===null?'—':'<span class="'+cls(cg)+'">'+spct(cg)+'</span>'))+
+      '</div></div>'+(mfSel===id?mfFundTxHTML(id):"");
+  };
   const per=F.filter(([,f])=>f.who!=="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
   const huf=F.filter(([,f])=>f.who==="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
   return (per.length?'<div class="secthead">Personal</div><div class="list" style="margin-top:10px">'+per.map(card).join("")+'</div>':"")+
     (huf.length?'<div class="secthead">HUF</div><div class="list" style="margin-top:10px">'+huf.map(card).join("")+'</div>':"")+
-    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions, tap again to collapse. NAVs refresh from AMFI once a day.</p>';
+    (CL.length?'<div class="secthead">Closed · fully redeemed</div><div class="list" style="margin-top:10px">'+CL.map(shut).join("")+'</div>':"")+
+    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions, tap again to collapse. Closed funds keep counting towards your lifetime returns. NAVs refresh from AMFI once a day.</p>';
 }
 function mfHTML(){
   if(mfTab==="port") return mfPortHTML();

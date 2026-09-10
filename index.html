@@ -165,6 +165,7 @@ html.masked .netrow,html.masked .ftot .ft1 b,html.masked .ftot .ft2
 .ertop{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
 .el{flex:1;min-width:0}
 .el b{display:block;font-size:13.5px;font-weight:600}
+.el b .into{font-style:normal;font-weight:500;font-size:11px;color:var(--gold)}
 .el span{display:block;margin-top:2px;font-size:11px;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .er2{flex:none;display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:600}
@@ -430,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v47";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v48";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1467,9 +1468,10 @@ function mfPlansHTML(){
     return '<div class="secthead rh">'+title+(tot?' · '+rupee(tot)+' ∕ month':'')+
       '<button class="linky" data-mfadd="'+kind+'">'+addLab+'</button></div>'+
       (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
-        const f=F[x.fid]||{name:"?"};
+        const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to];
         return '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
-          '<div class="el"><b>'+esc(f.name)+'</b><span>on the '+ord(+x.day||1)+' of every month</span></div>'+
+          '<div class="el"><b>'+esc(f.name)+(t?' <em class="into">→ '+esc(t.name)+'</em>':"")+'</b>'+
+          '<span>on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':'')+'</span></div>'+
           '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>';}).join("")+'</div>'
       :'<p class="hint">None recorded.</p>');
   };
@@ -1536,13 +1538,17 @@ function mfPlanSheet(kind,id){
       '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
     '<div class="f2"><div class="f"><label>Amount per month</label><input id="pA" class="mono" inputmode="decimal" value="'+(it?it.amt:"")+'"></div>'+
     '<div class="f"><label>Day of month</label><input id="pD" class="mono" inputmode="numeric" value="'+(it?it.day:"")+'"></div></div>'+
+    (kind==="swp"?'<div class="f"><label>Goes into (optional)</label><select id="pT"><option value="">— paid out as cash —</option>'+
+      F.map(([k,f])=>'<option value="'+k+'"'+(it&&it.to===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
+      '<p class="hint" style="margin-top:6px">Pick a fund when this SWP feeds a purchase there — the money moves between funds instead of coming to you.</p>':"")+
     '<div class="err" id="pErr"></div>'+
     '<button class="primary" id="pGo">'+(it?"Save":"Add")+'</button>'+
     (it?'<button class="ghost" id="pDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Stopped — remove</button>':""));
   $("#pGo").addEventListener("click",()=>{
     const fid=$("#pF").value, amt=parseFloat($("#pA").value), day=parseInt($("#pD").value,10);
     if(!fid||!(amt>0)||!(day>=1&&day<=31)) return showErr("#pErr","Fund, monthly amount and a day 1–31 are required.");
-    mfWrite(M=>{ const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day}; });
+    const to=kind==="swp"&&$("#pT")?$("#pT").value:"";
+    mfWrite(M=>{ const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day,...(to?{to}:{})}; });
     closeSheet(); setTab("mf");
   });
   const del=$("#pDel");

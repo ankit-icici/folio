@@ -115,11 +115,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .hrow .hrn span{display:block;margin-top:2px;font-size:11px;font-weight:600}
 .hrow .chev{flex:none;color:var(--faint);font-size:19px;line-height:1}
 .est.nolink{pointer-events:none}
-html.masked .mono,html.masked .hv,html.masked .kv .v,html.masked .fa,
-html.masked .est b,html.masked .eres b,html.masked .hrn,html.masked .er2 b,
-html.masked .frow .a,html.masked .vrow .a,html.masked .g9,
-html.masked .netrow,html.masked .ftot .ft1 b,html.masked .ftot .ft2
-{filter:blur(7px) !important;user-select:none}
 .mfc .chead .t{font-size:13.5px;white-space:normal;line-height:1.3}
 
 .list{margin-top:16px;display:flex;flex-direction:column;gap:12px}
@@ -431,16 +426,18 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v57";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v58";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
 const $=s=>document.querySelector(s);
 const inr0=new Intl.NumberFormat("en-IN",{maximumFractionDigits:0});
 const inr2=new Intl.NumberFormat("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
-const rupee=n=>"₹"+inr0.format(Math.round(Math.abs(n)));
-const compactR=n=>{const a=Math.abs(n);return a>=1e7?"₹"+(a/1e7).toFixed(2)+"Cr":a>=1e5?"₹"+(a/1e5).toFixed(1)+"L":a>=1000?"₹"+Math.round(a/1000)+"k":"₹"+Math.round(a);};
-const price=n=>"₹"+(Number.isInteger(n)?inr0.format(n):inr2.format(n));
+let MASK=false; try{MASK=localStorage.getItem("nivesh_mask")==="1";}catch(e){}
+const rupee=n=>MASK?"₹XXX":"₹"+inr0.format(Math.round(Math.abs(n)));
+const qfmt=(n,d)=>MASK?"XXX":(+n||0).toLocaleString("en-IN",{maximumFractionDigits:d||0});
+const compactR=n=>{if(MASK)return "₹XXX";const a=Math.abs(n);return a>=1e7?"₹"+(a/1e7).toFixed(2)+"Cr":a>=1e5?"₹"+(a/1e5).toFixed(1)+"L":a>=1000?"₹"+Math.round(a/1000)+"k":"₹"+Math.round(a);};
+const price=n=>MASK?"₹XXX":"₹"+(Number.isInteger(n)?inr0.format(n):inr2.format(n));
 const sgn=n=>n>0?"+":(n<0?"−":"");
 const smoney=n=>sgn(n)+rupee(n);
 const spct=n=>isFinite(n)?sgn(n)+Math.abs(n).toFixed(1)+"%":"—";
@@ -717,7 +714,9 @@ const EYE_OFF='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" strok
 function maskOn(){ try{return localStorage.getItem("nivesh_mask")==="1";}catch(e){return false;} }
 function setMask(on){
   try{ on?localStorage.setItem("nivesh_mask","1"):localStorage.removeItem("nivesh_mask"); }catch(e){}
+  MASK=on;
   document.documentElement.classList.toggle("masked",on);
+  if(ready){ render(); }
   const b=$("#eyeBtn"); if(b) b.innerHTML=on?EYE_OFF:EYE_ON;
 }
 function eyeTap(){
@@ -802,7 +801,7 @@ function render(){
   }
   bind();
 }
-const kabs=n=>{const a=Math.abs(n);
+const kabs=n=>{if(MASK)return "₹XXX";const a=Math.abs(n);
   return a>=100000?"₹"+new Intl.NumberFormat("en-US",{minimumFractionDigits:1,maximumFractionDigits:1}).format(a/1000)+"K":"₹"+inr0.format(Math.round(a));};
 const skfmt=n=>sgn(n)+kabs(n);
 function heroHTML(t){
@@ -839,7 +838,7 @@ function cardHTML(x,coreInv){
       symHTML(s.symbol)+'<span class="sp"></span>'+
       '<span class="dpill mono '+(h.day>=0?"g":"l")+'">'+spct(h.dayPct)+'</span></div>'+
     '<div class="g9 mono">'+
-      kv("Qty",h.qty)+
+      kv("Qty",qfmt(h.qty))+
       kv("Last price",price(s.price||0))+
       kv("Current value",rupee(h.cur),1)+
       kv("Unrealized P&L",'<span class="'+cls(h.pl)+'">'+smoney(h.pl)+'</span>')+
@@ -875,6 +874,7 @@ function buyChip(cmp,bb){
 }
 function priceShort(n){
   if(!(n>0)) return "—";
+  if(MASK) return "₹XXX";
   return n>=1000 ? "₹"+inr0.format(Math.round(n)) : "₹"+n.toFixed(2);
 }
 /* how far off target still counts as on target: 2% of this stock's own target size */
@@ -1115,7 +1115,7 @@ function esopHTML(){
     '<span>'+lab+'</span><b class="mono'+(c?" "+c:"")+'">'+val+'</b><i>'+sub+'</i></button>';
   const card='<div class="ecard"><div class="egrid">'+
     tile("cmp","CMP",price(S.cmp),manual?"set by you · tap to edit":spct(dayPct)+" today")+
-    tile("qty","Shares held",inr0.format(S.qty),"exercised")+
+    tile("qty","Shares held",qfmt(S.qty),"exercised")+
     tile("cg","Value after tax",rupee(S.net),"tax "+E.taxCg+"% on gain")+
     tile("pq","Profit after tax",sgn(S.pat)+rupee(S.pat),
       "perquisite "+S.perqRate.toFixed(1)+"%",cls(S.pat))+
@@ -1128,7 +1128,7 @@ function esopHTML(){
     const c=calcOption(r.qty,r.gpx,key,S.cmp,E), d=eD[key]||{};
     return '<tr'+(open?' class="on"':'')+'>'+
       '<th scope="row">'+r.year+'<span>&rsquo;'+String(r.gy).slice(2)+' grant</span></th>'+
-      '<td><button class="qbtn" data-eo="'+key+'">'+inr0.format(r.qty)+'</button></td>'+
+      '<td><button class="qbtn" data-eo="'+key+'">'+qfmt(r.qty)+'</button></td>'+
       '<td>'+eIn(key,"ep",d.ep)+'</td>'+
       '<td>'+eIn(key,"sq",d.sq)+'</td>'+
       '<td>'+eIn(key,"sp",d.sp)+'</td>'+
@@ -1141,17 +1141,17 @@ function esopHTML(){
     '</tr></thead><tbody>'+rowsOf(list,pre)+'</tbody></table></div>';
 
   const vo=esopVestedOpen(), voN=vo.reduce((a,r)=>a+r.qty,0);
-  const sec2='<div class="secthead">Vested, not exercised'+(voN?' · '+inr0.format(voN)+' options':"")+'</div>'+
+  const sec2='<div class="secthead">Vested, not exercised'+(voN?' · '+qfmt(voN)+' options':"")+'</div>'+
     (vo.length?tbl(vo,"V"):'<p class="hint">Every vested option has been exercised.</p>');
 
   const nv=esopNotVested(), nvN=nv.reduce((a,r)=>a+r.qty,0);
-  const sec3='<div class="secthead">Not vested'+(nvN?' · '+inr0.format(nvN)+' options':"")+'</div>'+
+  const sec3='<div class="secthead">Not vested'+(nvN?' · '+qfmt(nvN)+' options':"")+'</div>'+
     (nv.length?tbl(nv,"N"):'<p class="hint">Nothing left to vest.</p>');
 
   const grantList=gids.length?'<div class="secthead">Grants</div><div class="elist">'+
     Object.entries(E.grants).sort((a,b)=>b[1].year-a[1].year).map(([gid,g])=>
       '<button class="ertop" data-eed="'+gid+'"><div class="el"><b>'+g.year+'</b>'+
-      '<span>'+inr0.format(g.qty)+' options · grant price '+price(+g.strike)+'</span></div>'+
+      '<span>'+qfmt(g.qty)+' options · grant price '+price(+g.strike)+'</span></div>'+
       '<div class="er2"><i>›</i></div></button>').join("")+'</div>':"";
 
   return card+sec2+sec3+grantList+
@@ -1300,7 +1300,7 @@ function esopGrantSheet(id){
     const q=+$("#gQ").value||0, yr=+$("#gY").value||y;
     const rows=VEST.map((f,i)=>({y:yr+i+1,q:Math.round(q*(VEST.slice(0,i+1).reduce((a,b)=>a+b,0)))-Math.round(q*(VEST.slice(0,i).reduce((a,b)=>a+b,0)))}));
     el.innerHTML='<div class="secthead">Vesting</div>'+rows.map(r=>
-      '<div class="gvr"><span>'+r.y+(r.y<=y?" · vested":"")+'</span><span class="mono">'+inr0.format(r.q)+'</span></div>').join("");
+      '<div class="gvr"><span>'+r.y+(r.y<=y?" · vested":"")+'</span><span class="mono">'+qfmt(r.q)+'</span></div>').join("");
   };
   draw();
   ["#gY","#gQ"].forEach(k=>{const el=$(k); if(el) el.addEventListener("input",draw);});
@@ -1474,7 +1474,6 @@ function combinedCagr(){
 function homeHeroHTML(t){
   const m=mfTotals();
   const inv=t.inv+m.inv, cur=t.cur+m.cur, pl=cur-inv;
-  const day=t.day+m.day, dayBase=(t.dayPct!==0&&t.day!==0?t.day/(t.dayPct/100):0)+(m.dayPct!==0&&m.day!==0?m.day/(m.dayPct/100):0);
   const st = pendingSave ? "SAVING…" : (sync==="init" ? "SYNCING…" : (sync==="live" ? "LIVE" : "OFFLINE"));
   const stamp = meta.priceAt || meta.updatedAt;
   return '<div class="hcard">'+
@@ -1482,10 +1481,9 @@ function homeHeroHTML(t){
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(inv)+'</div></div>'+
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(pl)+'">'+skfmt(pl)+' <small>('+spct(inv>0?pl/inv*100:0)+')</small></div></div>'+
-      '<div class="r"><div class="hk">Day P&L</div><div class="hv mono '+cls(day)+'">'+skfmt(day)+' <small>('+spct(dayBase>0?day/dayBase*100:0)+')</small></div></div>'+
     '</div>'+
-    '<div class="gl"><span>Stocks + mutual funds</span><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
-      (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span><span>ESOPs excluded</span></div>'+
+    '<div class="gl"><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
+      (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
     (()=>{const c=combinedCagr();
       const F=mfunds(); let mInv=0,mCur=0;
       for(const f of Object.values(F)) if(mfPersonal(f)){ mInv+=+f.inv||0; mCur+=(+f.units||0)*(+f.nav||0); }
@@ -1523,8 +1521,7 @@ function mfHeroHTML(){
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+' <small>('+spct(m.plPct)+')</small></div></div>'+
     '</div>'+
     '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length+' funds</span>'+
-      '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span>'+
-      '<span></span></div>'+
+      '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span></div>'+
     '<div class="cagr"><span class="hk" style="margin:0">Abs '+
       '<b class="mono '+cls(R.absPct)+'" style="font-size:15px;font-weight:600"> '+sgn(R.absPct)+Math.abs(R.absPct).toFixed(1)+'%</b></span>'+
       '<span class="hk" style="margin:0">CAGR '+
@@ -1574,7 +1571,7 @@ function mfPortHTML(){
       '<div class="t">'+esc(f.name)+'</div><span class="sp"></span>'+
       (d!==null?'<span class="dpill mono '+(d>=0?"g":"l")+'">'+spct(d)+'</span>':"")+'</div>'+
       '<div class="g9 mono">'+
-      kv("Units",u.toLocaleString("en-IN",{maximumFractionDigits:3}))+
+      kv("Units",qfmt(u,3))+
       kv("NAV",price(nav))+kv("Current value",rupee(cur),1)+
       kv("Invested",rupee(inv))+
       kv("P&L",'<span class="'+cls(pl)+'">'+smoney(pl)+'</span>')+
@@ -1886,7 +1883,7 @@ function flowsHTML(){
         return '<div class="fr"><div class="fl">'+
           '<div class="fn"><span class="nw">'+esc(t.name)+(t.approx?' <span class="apx">≈</span>':"")+'</span>'+
             '<span class="tag '+(t.side==="buy"?"b":"s")+'">'+t.side.toUpperCase()+'</span></div>'+
-          '<div class="fs mono">'+esc(dl)+' · '+t.qty+' × '+price(t.amt/t.qty)+'</div></div>'+
+          '<div class="fs mono">'+esc(dl)+' · '+qfmt(t.qty)+' × '+price(t.amt/t.qty)+'</div></div>'+
           '<div class="fa mono '+(t.side==="sell"?"gain":"")+'">'+(t.side==="sell"?"+":"−")+rupee(t.amt)+'</div></div>';
       }).join("")+"</div>":"");
   }).join("")+"</div>"+
@@ -2274,7 +2271,7 @@ function txnSheet(id,side){
     '<div class="f2"><div class="f"><label>Quantity</label><input id="tQty" class="mono" inputmode="numeric"></div>'+
     '<div class="f"><label>Price</label><input id="tPrice" class="mono" inputmode="decimal" value="'+(s.price||"")+'"></div></div>'+
     '<div class="f"><label>Date</label><input id="tDate" type="date" value="'+today()+'"></div>'+
-    '<p class="hint">Holding <span class="mono">'+h.qty+'</span> · avg <span class="mono">'+price(h.avg)+'</span> · sells consume oldest lots first (FIFO)</p>'+
+    '<p class="hint">Holding <span class="mono">'+qfmt(h.qty)+'</span> · avg <span class="mono">'+price(h.avg)+'</span> · sells consume oldest lots first (FIFO)</p>'+
     '<div class="hint mono" id="fifoPrev"></div>'+
     '<div class="err" id="tErr"></div>'+
     '<button class="primary" id="tGo">Confirm</button>');
@@ -2321,7 +2318,7 @@ function histSheet(id){
     (rows.length?rows.map(t=>
       '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
       '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
-      '<div class="q mono" style="flex:1">'+t.qty+' × '+price(t.price)+' = '+rupee(t.qty*t.price)+'</div>'+
+      '<div class="q mono" style="flex:1">'+qfmt(t.qty)+' × '+price(t.price)+' = '+rupee(t.qty*t.price)+'</div>'+
       '<button class="del" data-tid="'+t.id+'">Remove</button></div>').join("")
     :'<p class="hint">No transactions.</p>')+
     '<p class="hint">Remove a row to correct a mistake. ₹0 lots are bonus/split shares.</p>');

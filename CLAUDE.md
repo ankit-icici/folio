@@ -230,6 +230,14 @@ Never ask for the PIN. Ask the user to sign in in their browser, then run checks
 signed-in page (`api()`, `stocks`, `txns` are all in scope), e.g.
 `await fetch(api('action=snapshots')).then(r=>r.json())`.
 
+When the browser is unavailable — or to *prove* an invariant rather than eyeball one — verify the
+**deployed** logic offline: `curl` the live `index.html`, pull the functions out of it by name
+(brace-match from `function <name>(`), and run them in node with `new Function('mfunds','mfTxs',
+code + 'return {…}')`, feeding a synthetic dataset in the real `meta.mf` shape. This tests what is
+actually shipped, not a local copy. The strongest form is a **differential** run: build the same
+dataset with and without the thing under test and assert the outputs are identical to several
+decimals — that is how the "private funds move no total and no return" rule was confirmed.
+
 ## Gotchas that have caused real bugs
 
 - **Service worker**: if a change seems not to deploy, it's the cache. Bump `CACHE`; when
@@ -304,3 +312,18 @@ and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-f
 - `hufTotals()` must test `f.who==="HUF"` directly, NOT `!mfCounted(f)` - otherwise private funds silently land in the HUF subtotal.
 - Relay v12: guests KEEP `search` and `quotes` (public market data) - only `snapshots`/`snapshot` and every POST are owner-only. v11 gated all of doGet after `load`, which silently killed stock search in the advisor view (client showed "Nothing found").
 - App: `AUTH.g` set at login from the reply; `isGuest()` hides the ESOP tab and the + button, no-ops saveRemote/saveNow, slims the Account sheet. The advisor logs in with the SAME username + the advisor PIN at the same URL.
+
+## What is in the live account (context, not instructions)
+
+- Stocks: ~19 holdings incl. Satellite/IPO ones; ICICI Bank shares are ESOP-only and never in `stocks{}`.
+- Funds: 8 counted personal funds, 1 HUF fund (ICICI Pru Ultra Short), 1 closed fund
+  (Mirae Asset Large Cap Regular, exited — kept at `units:0` so its flows still count), and
+  1 **private** fund (Parag Parikh Flexi Cap Direct, Groww) with its real 73-row ledger:
+  69 SIPs from Dec 2020 (₹5,000 → ₹2,500 → ₹3,000) and 4 redemptions totalling ₹2,05,000.
+  Its lifetime XIRR is ~17.5 %; Groww's own screens show 15.45 % (fund row) and 20.31 %
+  (portfolio tile) under conventions that could not be reproduced from the order data.
+- **Not imported** (offered, user has not decided): three other Groww funds exited 2021–23 —
+  SBI Focused Direct (₹30,000 in → ₹46,530 out), Mirae Large Cap Direct (₹30,000 → ₹45,062),
+  Mirae Large & Midcap Direct (₹15,000 → ₹24,061). Adding them as closed private funds would
+  complete the Groww side; they would not touch any aggregate, since private funds never do.
+- Advisor access: no advisor PIN is currently set (test PINs were created and revoked).

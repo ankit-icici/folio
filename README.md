@@ -8,6 +8,8 @@ A minimal, installable PWA for tracking personal Indian stock portfolios — liv
 
 - **Advisor view** — a second, view-only PIN shows stocks & funds without ESOPs; set or revoke it from Account.
 
+- **Redemptions** — redeem part or all of a fund by amount or units; units, cost basis and returns all adjust.
+
 ## What it does
 
 - **Dashboard** — current value, total investment, unrealised P&L, day P&L, gainers/losers split, and lifetime **CAGR** (money-weighted XIRR over your full transaction history, recomputed live)

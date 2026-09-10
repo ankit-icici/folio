@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v66";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v67";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1588,7 +1588,8 @@ function mfFundTxHTML(id){
     '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> in · <span class="mono gain">+'+rupee(out)+'</span> out</div></div>'+
     (list.length?'<div class="elist" style="padding:2px 16px">'+list.map(([,t])=>mfTxRow(t,false)).join("")+'</div>'
       :'<p class="hint">No transactions in this period.</p>')+
-    '<div class="acts" style="padding:0 4px 6px"><button data-mfedit="'+id+'">Edit fund</button></div></div>';
+    '<div class="acts" style="padding:0 4px 6px"><button data-mfedit="'+id+'">Edit fund</button>'+
+      '<button data-mfred="'+id+'">Redeem / withdraw</button></div></div>';
 }
 function mfChipsHTML(){
   return '<div class="chips" style="margin-top:10px">'+
@@ -1757,7 +1758,7 @@ function mfTxSheet(id){
       '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
     '<div class="f2"><div class="f"><label>Amount</label><input id="tA" class="mono" inputmode="decimal" value="'+(it?it.amt:"")+'"></div>'+
     '<div class="f"><label>Date</label><input id="tD" type="date" value="'+(it?it.date:today())+'"></div></div>'+
-    '<p class="hint" style="margin-top:6px">A record only — update the fund’s units and invested amount separately once the AMC allots or redeems.</p>'+
+    '<p class="hint" style="margin-top:6px">A diary entry only — it does not move units. For a redemption use <b>Redeem / withdraw</b> on the fund, which adjusts units and cost too.</p>'+
     '<div class="err" id="tErr"></div>'+
     '<button class="primary" id="tGo">'+(it?"Save":"Add")+'</button>'+
     (it?'<button class="ghost" id="tDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Remove entry</button>':""));
@@ -1775,6 +1776,67 @@ function mfTxSheet(id){
     if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Remove it?"; return; }
     mfWrite(M=>{ delete M.txs[id]; });
     closeSheet(); setTab("mf");
+  });
+}
+
+/* redeem all or part of a holding: units and cost basis both move, and the
+   money coming back is logged so it shows up in the returns */
+function mfRedeemSheet(id){
+  if(guestGuard()) return;
+  if(maskGuard()) return;
+  const f=mfunds()[id]; if(!f) return;
+  const nav=+f.nav||0, uHave=+f.units||0, invHave=+f.inv||0;
+  if(!(uHave>0)||!(nav>0)){ openSheet("Redeem",'<p class="hint">This fund has no units or no NAV yet.</p>'); return; }
+  let mode="amt";
+  openSheet("Redeem · "+f.name,
+    '<div class="togg full" id="rM"><button aria-pressed="true" data-v="amt">By amount</button>'+
+      '<button aria-pressed="false" data-v="units">By units</button></div>'+
+    '<div class="f2"><div class="f"><label id="rLab">Amount received</label><input id="rV" class="mono" inputmode="decimal" placeholder="0"></div>'+
+    '<div class="f"><label>Date</label><input id="rD" type="date" value="'+today()+'"></div></div>'+
+    '<div class="acts" style="padding:0 4px 4px"><button id="rAll">Redeem everything</button></div>'+
+    '<div class="hint mono" id="rPrev"></div>'+
+    '<p class="hint">You hold <span class="mono">'+qfmt(uHave,3)+'</span> units at NAV <span class="mono">'+price(nav)+'</span> · '+
+      'worth <span class="mono">'+rupee(uHave*nav)+'</span>, cost <span class="mono">'+rupee(invHave)+'</span>.</p>'+
+    '<div class="err" id="rErr"></div>'+
+    '<button class="primary" id="rGo">Record redemption</button>');
+  const calc=()=>{
+    const v=parseFloat($("#rV").value);
+    if(!(v>0)) return null;
+    let units = mode==="units" ? v : v/nav;
+    if(units>uHave*1.0001) units=uHave;
+    const amt = mode==="units" ? units*nav : v;
+    const cost = invHave*(units/uHave);
+    return {units,amt,cost,gain:amt-cost,uLeft:Math.max(0,uHave-units),iLeft:Math.max(0,invHave-cost)};
+  };
+  const draw=()=>{
+    const c=calc(), el=$("#rPrev"); if(!el) return;
+    if(!c){ el.innerHTML=""; return; }
+    const full=c.uLeft<0.001;
+    el.innerHTML='Redeeming <b>'+qfmt(c.units,3)+'</b> units for <b>'+rupee(c.amt)+'</b>'+
+      ' · cost released '+rupee(c.cost)+' · gain <span class="'+cls(c.gain)+'">'+smoney(c.gain)+'</span><br>'+
+      (full?'Nothing left — the fund stays on record as closed so its returns still count.'
+           :'Left with '+qfmt(c.uLeft,3)+' units, cost '+rupee(c.iLeft)+' (now worth '+rupee(c.uLeft*nav)+').');
+  };
+  $("#rM").addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return;
+    mode=b.dataset.v;
+    $("#rM").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    $("#rLab").textContent=mode==="units"?"Units redeemed":"Amount received"; draw();});
+  $("#rV").addEventListener("input",draw);
+  $("#rAll").addEventListener("click",()=>{
+    mode="units"; $("#rM").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v==="units"?"true":"false"));
+    $("#rLab").textContent="Units redeemed"; $("#rV").value=String(uHave); draw();});
+  $("#rGo").addEventListener("click",()=>{
+    const c=calc(), d=$("#rD").value;
+    if(!c) return showErr("#rErr","Enter the amount or the units redeemed.");
+    if(!d) return showErr("#rErr","Pick the redemption date.");
+    const full=c.uLeft<0.001;
+    mfWrite(M=>{
+      const g=M.funds[id]; if(!g) return;
+      g.units=full?0:+c.uLeft.toFixed(4);
+      g.inv=full?0:Math.round(c.iLeft);
+      M.txs[uid()]={fid:id,kind:"out",amt:Math.round(c.amt),date:d};
+    });
+    mfSel=null; closeSheet(); setTab("mf");
   });
 }
 
@@ -1796,7 +1858,9 @@ function mfSheet(id){
     '<p class="hint" style="margin-top:6px">A private fund never leaves your login: every figure your advisor sees is worked out without it.</p>'+
     '<div class="err" id="mErr"></div>'+
     '<button class="primary" id="mGo">'+(f?"Save":"Add")+'</button>'+
-    (f?'<button class="ghost" id="mDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Redeemed — remove this fund</button>':""));
+    (f?'<button class="ghost" id="mRed" style="margin-top:14px">Redeem or withdraw from this fund</button>'+
+       '<button class="ghost" id="mDel" style="margin-top:10px;color:var(--loss);border-color:var(--loss)">Delete this fund and its history</button>'+
+       '<p class="hint" style="margin-top:6px">Delete only removes a fund added by mistake. For a real exit use Redeem, which keeps the money trail in your returns.</p>':""));
   let priv=!!(f&&f.priv);
   $("#mPriv").addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return;
     priv=b.dataset.v==="1";
@@ -1839,12 +1903,20 @@ function mfSheet(id){
         ...(pick?{code:pick.code,...(pick.nav?{nav:pick.nav,navDate:pick.navDate||old.navDate}:{})}:{})};});
     mfSyncAt=0; closeSheet(); setTab("mf"); mfSyncNav();
   });
+  const red=$("#mRed");
+  if(red) red.addEventListener("click",()=>{ closeSheet(); mfRedeemSheet(id); });
   const del=$("#mDel");
   if(del) del.addEventListener("click",e=>{
     const b=e.currentTarget;
-    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Remove it?"; return; }
-    mfWrite(M=>{ delete M.funds[id]; });
-    closeSheet(); setTab("mf");
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Delete it and its transactions?"; return; }
+    mfWrite(M=>{
+      delete M.funds[id];
+      for(const k of Object.keys(M.txs||{})) if(M.txs[k].fid===id) delete M.txs[k];
+      for(const k of Object.keys(M.sips||{})) if(M.sips[k].fid===id) delete M.sips[k];
+      for(const k of Object.keys(M.swps||{})){ if(M.swps[k].fid===id) delete M.swps[k];
+        else if(M.swps[k].to===id) delete M.swps[k].to; }
+    });
+    mfSel=null; closeSheet(); setTab("mf");
   });
 }
 
@@ -1962,6 +2034,8 @@ function bind(){
     r.addEventListener("click",()=>{mfSel=(mfSel===r.dataset.mfund?null:r.dataset.mfund); render();}));
   document.querySelectorAll("[data-mfedit]").forEach(b=>
     b.addEventListener("click",e=>{e.stopPropagation(); mfSheet(b.dataset.mfedit);}));
+  document.querySelectorAll("[data-mfred]").forEach(b=>
+    b.addEventListener("click",e=>{e.stopPropagation(); mfRedeemSheet(b.dataset.mfred);}));
   document.querySelectorAll("[data-mfadd]").forEach(b=>
     b.addEventListener("click",()=>{const k=b.dataset.mfadd; k==="tx"?mfTxSheet():mfPlanSheet(k);}));
   document.querySelectorAll("[data-mfplan]").forEach(b=>

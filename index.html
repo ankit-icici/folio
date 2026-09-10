@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v53";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v54";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1384,7 +1384,7 @@ function mfTotals(){
   return {inv,cur,pl:cur-inv,plPct:inv>0?(cur-inv)/inv*100:0,
           day,dayPct:dayBase>0?day/dayBase*100:0};
 }
-const mfPersonal=f=>!(f.who==="HUF")&&!/Ultra Short/i.test(f.name||"");
+const mfPersonal=f=>!(f.who==="HUF");   /* returns cover every fund except HUF-held ones */
 function mfReturns(){
   const F=mfunds(); let inv=0,cur=0;
   for(const f of Object.values(F)){ if(!mfPersonal(f)) continue;

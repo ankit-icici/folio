@@ -115,6 +115,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .hrow .hrn span{display:block;margin-top:2px;font-size:11px;font-weight:600}
 .hrow .chev{flex:none;color:var(--faint);font-size:19px;line-height:1}
 .est.nolink{pointer-events:none}
+html.masked .mono,html.masked .hv,html.masked .kv .v,html.masked .fa,
+html.masked .est b,html.masked .eres b,html.masked .hrn,html.masked .er2 b,
+html.masked .frow .a,html.masked .vrow .a,html.masked .g9,
+html.masked .netrow,html.masked .ftot .ft1 b,html.masked .ftot .ft2
+{filter:blur(7px) !important;user-select:none}
 .mfc .chead .t{font-size:13.5px;white-space:normal;line-height:1.3}
 
 .list{margin-top:16px;display:flex;flex-direction:column;gap:12px}
@@ -425,7 +430,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v46";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v47";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -681,7 +686,8 @@ function symHTML(y){
 function shellHTML(){
   return '<div class="wrap">'+
     '<header><div class="wordmark">Folio<span>.</span></div>'+
-    '<div class="hr"><button class="tbtn" id="searchBtn" aria-label="Search stocks">⌕</button>'+
+    '<div class="hr"><button class="tbtn" id="eyeBtn" aria-label="Hide values"></button>'+
+    '<button class="tbtn" id="searchBtn" aria-label="Search stocks">⌕</button>'+
     '<button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
     '<button class="tbtn" id="cfgBtn" aria-label="Account">⚙</button></div></header>'+
     '<div class="status" id="status"></div>'+
@@ -697,6 +703,29 @@ function shellHTML(){
     '<button class="fab" id="fab" aria-label="Add">+</button>';
 }
 const view=()=>tab==="home"?"home":(tab==="mf"?"mf":(tab==="esop"?"esop":"stocks"));
+/* privacy shutter: one tap hides every figure, your PIN brings them back */
+const EYE_ON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+function maskOn(){ try{return localStorage.getItem("nivesh_mask")==="1";}catch(e){return false;} }
+function setMask(on){
+  try{ on?localStorage.setItem("nivesh_mask","1"):localStorage.removeItem("nivesh_mask"); }catch(e){}
+  document.documentElement.classList.toggle("masked",on);
+  const b=$("#eyeBtn"); if(b) b.innerHTML=on?EYE_OFF:EYE_ON;
+}
+function eyeTap(){
+  if(!maskOn()){ setMask(true); return; }
+  openSheet("Show values",
+    '<div class="f"><label>Your PIN</label><input id="unPin" type="password" class="mono" inputmode="numeric" autocomplete="off" maxlength="8"></div>'+
+    '<div class="err" id="unErr"></div>'+
+    '<button class="primary" id="unGo">Show</button>');
+  const go=()=>{
+    if(AUTH&&$("#unPin").value===String(AUTH.p)){ setMask(false); closeSheet(); }
+    else showErr("#unErr","That is not your PIN.");
+  };
+  $("#unGo").addEventListener("click",go);
+  $("#unPin").addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
+  $("#unPin").focus();
+}
 function setupHTML(mode){
   const isNew=mode==="new";
   return '<div class="setup"><div class="wordmark">Folio<span>.</span></div>'+
@@ -1326,9 +1355,12 @@ function esopLotSheet(id,gid){
    on Home, and nothing else. NAVs come straight from api.mfapi.in (AMFI data, CORS
    open, one tiny request per fund) - the relay is not involved. */
 function mfunds(){ return (meta.mf&&meta.mf.funds)||{}; }
+const mfSips=()=>(meta.mf&&meta.mf.sips)||{};
+const mfSwps=()=>(meta.mf&&meta.mf.swps)||{};
+const mfTxs=()=>(meta.mf&&meta.mf.txs)||{};
 function mfWrite(fn){
   if(!meta.mf) meta.mf={funds:{}};
-  if(!meta.mf.funds) meta.mf.funds={};
+  for(const k of ["funds","sips","swps","txs"]) if(!meta.mf[k]) meta.mf[k]={};
   fn(meta.mf); saveRemote();
 }
 function mfTotals(){
@@ -1421,7 +1453,137 @@ function mfHTML(){
       kv("P&L",'<span class="'+cls(r.pl)+'">'+smoney(r.pl)+'</span>')+
       kv("Return",'<span class="'+cls(r.pl)+'">'+spct(r.inv>0?r.pl/r.inv*100:0)+'</span>',1)+
       '</div></div>').join("")+'</div>'+
-    '<p class="hint" style="padding:0 4px">Tap a fund to edit it. NAVs refresh from AMFI once a day; funds stay out of allocation, Plan, Flows and CAGR.</p>';
+    mfPlansHTML()+mfTxHTML()+
+    '<p class="hint" style="padding:0 4px">Tap anything to edit it. NAVs refresh from AMFI once a day; funds stay out of allocation, Plan, Flows and CAGR.</p>';
+}
+
+
+/* standing instructions - shown, not executed: the AMC moves the money, this records it */
+function mfPlansHTML(){
+  const F=mfunds();
+  const sec=(kind,title,items,addLab)=>{
+    const rows=Object.entries(items).sort((a,b)=>(+a[1].day||0)-(+b[1].day||0));
+    const tot=rows.reduce((a,[,x])=>a+(+x.amt||0),0);
+    return '<div class="secthead rh">'+title+(tot?' · '+rupee(tot)+' ∕ month':'')+
+      '<button class="linky" data-mfadd="'+kind+'">'+addLab+'</button></div>'+
+      (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
+        const f=F[x.fid]||{name:"?"};
+        return '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
+          '<div class="el"><b>'+esc(f.name)+'</b><span>on the '+ord(+x.day||1)+' of every month</span></div>'+
+          '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>';}).join("")+'</div>'
+      :'<p class="hint">None recorded.</p>');
+  };
+  return sec("sip","Active SIPs",mfSips(),"Add SIP")+
+         sec("swp","Active SWPs",mfSwps(),"Add SWP");
+}
+const ord=n=>n+(n%10===1&&n%100!==11?"st":n%10===2&&n%100!==12?"nd":n%10===3&&n%100!==13?"rd":"th");
+/* one-off deposits and withdrawals - a diary with the same periods Flows uses */
+let mfPeriod="fy", mfA=null, mfB=null;
+function mfWindow(){
+  if(mfPeriod==="fy"||mfPeriod==="pfy"){
+    const y=fyStart(mfPeriod==="pfy"?1:0);
+    return [y+"-04-01",(y+1)+"-03-31"];
+  }
+  if(mfPeriod==="cus"){
+    let a=mfA||fyStart(0)+"-04", b=mfB||new Date().toISOString().slice(0,7);
+    if(a>b){ const t=a; a=b; b=t; }
+    return [a+"-01",monthEnd(b)];
+  }
+  return ["0000-01-01","9999-12-31"];
+}
+function mfTxHTML(){
+  const F=mfunds(), [from,to]=mfWindow();
+  const rows=Object.entries(mfTxs())
+    .filter(([,t])=>t.date>=from&&t.date<=to)
+    .sort((a,b)=>a[1].date<b[1].date?1:-1);
+  let inn=0,out=0;
+  for(const [,t] of rows){ if(t.kind==="out") out+=+t.amt||0; else inn+=+t.amt||0; }
+  const chips='<div class="chips" style="margin-top:10px">'+
+    [["fy",fyLabel(0)],["pfy",fyLabel(1)],["cus","Custom"],["all","All"]].map(p=>
+    '<button aria-pressed="'+(mfPeriod===p[0])+'" data-mfp="'+p[0]+'">'+p[1].toUpperCase()+'</button>').join("")+'</div>'+
+    (mfPeriod==="cus"?mfCustomHTML():"");
+  const tot=(inn||out)?'<div class="ftot"><div class="ft1"><span>'+rows.length+' entr'+(rows.length===1?"y":"ies")+'</span>'+
+      '<b class="mono '+cls(out-inn)+'">'+smoney(out-inn)+'</b></div>'+
+    '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> put in · <span class="mono gain">+'+rupee(out)+'</span> taken out</div></div>':"";
+  return '<div class="secthead rh">Lumpsum in & out'+
+    '<button class="linky" data-mfadd="tx">Add entry</button></div>'+chips+tot+
+    (rows.length?'<div class="elist">'+rows.map(([id,t])=>{
+      const f=F[t.fid]||{name:"?"};
+      const d=new Date(t.date+"T00:00:00");
+      return '<button class="ertop" data-mftx="'+id+'">'+
+        '<div class="el"><b>'+esc(f.name)+'</b><span>'+(isNaN(d)?esc(t.date):d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}))+
+          ' · '+(t.kind==="out"?"withdrawal":"deposit")+'</span></div>'+
+        '<div class="er2"><b class="mono '+(t.kind==="out"?"gain":"")+'">'+(t.kind==="out"?"+":"−")+rupee(+t.amt||0)+'</b><i>›</i></div></button>';}).join("")+'</div>'
+    :'<p class="hint">Nothing in this period.</p>');
+}
+function mfCustomHTML(){
+  const a=mfA||fyStart(0)+"-04", b=mfB||new Date().toISOString().slice(0,7), ys=flowYears();
+  const sel=(role,ym)=>{const[y,m]=ym.split("-");
+    return '<select data-mcus="'+role+'m" aria-label="Month">'+MON.map((n,i)=>
+        '<option value="'+String(i+1).padStart(2,"0")+'"'+(+m===i+1?" selected":"")+'>'+n+'</option>').join("")+'</select>'+
+      '<select data-mcus="'+role+'y" aria-label="Year">'+ys.map(v=>
+        '<option value="'+v+'"'+(+y===v?" selected":"")+'>'+v+'</option>').join("")+'</select>';};
+  return '<div class="cus"><div class="cusr"><span>From</span>'+sel("a",a)+'</div>'+
+         '<div class="cusr"><span>To</span>'+sel("b",b)+'</div></div>';
+}
+/* sheets */
+function mfPlanSheet(kind,id){
+  const items=kind==="sip"?mfSips():mfSwps(), it=id?items[id]:null;
+  const F=Object.entries(mfunds());
+  if(!F.length){ openSheet("Add "+kind.toUpperCase(),'<p class="hint">Add a fund first.</p>'); return; }
+  openSheet(it?"Edit "+kind.toUpperCase():"Add "+kind.toUpperCase(),
+    '<div class="f"><label>Fund</label><select id="pF">'+F.map(([k,f])=>
+      '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
+    '<div class="f2"><div class="f"><label>Amount per month</label><input id="pA" class="mono" inputmode="decimal" value="'+(it?it.amt:"")+'"></div>'+
+    '<div class="f"><label>Day of month</label><input id="pD" class="mono" inputmode="numeric" value="'+(it?it.day:"")+'"></div></div>'+
+    '<div class="err" id="pErr"></div>'+
+    '<button class="primary" id="pGo">'+(it?"Save":"Add")+'</button>'+
+    (it?'<button class="ghost" id="pDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Stopped — remove</button>':""));
+  $("#pGo").addEventListener("click",()=>{
+    const fid=$("#pF").value, amt=parseFloat($("#pA").value), day=parseInt($("#pD").value,10);
+    if(!fid||!(amt>0)||!(day>=1&&day<=31)) return showErr("#pErr","Fund, monthly amount and a day 1–31 are required.");
+    mfWrite(M=>{ const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day}; });
+    closeSheet(); setTab("mf");
+  });
+  const del=$("#pDel");
+  if(del) del.addEventListener("click",e=>{
+    const b=e.currentTarget;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Remove it?"; return; }
+    mfWrite(M=>{ delete M[kind==="sip"?"sips":"swps"][id]; });
+    closeSheet(); setTab("mf");
+  });
+}
+function mfTxSheet(id){
+  const it=id?mfTxs()[id]:null;
+  const F=Object.entries(mfunds());
+  if(!F.length){ openSheet("Add entry",'<p class="hint">Add a fund first.</p>'); return; }
+  let kind=it?it.kind:"in";
+  openSheet(it?"Edit entry":"Lumpsum entry",
+    '<div class="togg full" id="txT"><button aria-pressed="'+(kind==="in")+'" data-v="in">Deposit</button>'+
+      '<button aria-pressed="'+(kind==="out")+'" data-v="out">Withdrawal</button></div>'+
+    '<div class="f"><label>Fund</label><select id="tF">'+F.map(([k,f])=>
+      '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
+    '<div class="f2"><div class="f"><label>Amount</label><input id="tA" class="mono" inputmode="decimal" value="'+(it?it.amt:"")+'"></div>'+
+    '<div class="f"><label>Date</label><input id="tD" type="date" value="'+(it?it.date:today())+'"></div></div>'+
+    '<p class="hint" style="margin-top:6px">A record only — update the fund’s units and invested amount separately once the AMC allots or redeems.</p>'+
+    '<div class="err" id="tErr"></div>'+
+    '<button class="primary" id="tGo">'+(it?"Save":"Add")+'</button>'+
+    (it?'<button class="ghost" id="tDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Remove entry</button>':""));
+  $("#txT").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;kind=b.dataset.v;
+    $("#txT").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
+  $("#tGo").addEventListener("click",()=>{
+    const fid=$("#tF").value, amt=parseFloat($("#tA").value), d=$("#tD").value;
+    if(!fid||!(amt>0)||!d) return showErr("#tErr","Fund, amount and date are required.");
+    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind}; });
+    closeSheet(); setTab("mf");
+  });
+  const del=$("#tDel");
+  if(del) del.addEventListener("click",e=>{
+    const b=e.currentTarget;
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Remove it?"; return; }
+    mfWrite(M=>{ delete M.txs[id]; });
+    closeSheet(); setTab("mf");
+  });
 }
 
 /* add or edit one fund - the scheme search fills code, name and NAV */
@@ -1595,6 +1757,19 @@ function bind(){
     b.addEventListener("click",()=>setTab(b.dataset.go==="stocks"?lastStockTab:b.dataset.go)));
   document.querySelectorAll("[data-mfund]").forEach(r=>
     r.addEventListener("click",()=>mfSheet(r.dataset.mfund)));
+  document.querySelectorAll("[data-mfadd]").forEach(b=>
+    b.addEventListener("click",()=>{const k=b.dataset.mfadd; k==="tx"?mfTxSheet():mfPlanSheet(k);}));
+  document.querySelectorAll("[data-mfplan]").forEach(b=>
+    b.addEventListener("click",()=>{const[k,id]=b.dataset.mfplan.split(":"); mfPlanSheet(k,id);}));
+  document.querySelectorAll("[data-mftx]").forEach(b=>
+    b.addEventListener("click",()=>mfTxSheet(b.dataset.mftx)));
+  document.querySelectorAll("[data-mfp]").forEach(b=>
+    b.addEventListener("click",()=>{mfPeriod=b.dataset.mfp; render();}));
+  document.querySelectorAll("[data-mcus]").forEach(sl=>
+    sl.addEventListener("change",()=>{
+      const g=r=>$('[data-mcus="'+r+'y"]').value+"-"+$('[data-mcus="'+r+'m"]').value;
+      mfA=g("a"); mfB=g("b"); render();
+    }));
   document.querySelectorAll("[data-sort]").forEach(b=>
     b.addEventListener("click",()=>{sortBy=b.dataset.sort;render();}));
   document.querySelectorAll("[data-period]").forEach(b=>
@@ -2115,6 +2290,8 @@ function mountShell(){
   $("#app").innerHTML=shellHTML();
   applyTheme();
   $("#themeBtn").addEventListener("click",cycleTheme);
+  $("#eyeBtn").addEventListener("click",eyeTap);
+  setMask(maskOn());
   $("#cfgBtn").addEventListener("click",cfgSheet);
   $("#searchBtn").addEventListener("click",searchSheet);
   $("#fab").addEventListener("click",()=>{

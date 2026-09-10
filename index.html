@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v52";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v53";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1428,6 +1428,28 @@ async function mfSyncNav(){
 
 
 /* ---------- home: everything you own, in one card ---------- */
+function combinedCagr(){
+  const flows=[];
+  for(const f of cashFlows()){
+    const ms=Date.parse(f.date+"T00:00:00"); if(!isFinite(ms)) continue;
+    flows.push([ms,(f.side==="sell"?1:-1)*f.amt]);
+  }
+  const F=mfunds(); let mfCur=0;
+  for(const fu of Object.values(F)) if(mfPersonal(fu)) mfCur+=(+fu.units||0)*(+fu.nav||0);
+  for(const t of Object.values(mfTxs())){
+    const fund=F[t.fid]; if(!fund||!mfPersonal(fund)) continue;
+    const ms=Date.parse(t.date+"T00:00:00"); if(!isFinite(ms)) continue;
+    flows.push([ms,(t.kind==="swp"||t.kind==="out"?1:-1)*(+t.amt||0)]);
+  }
+  const term=totals(all()).cur+mfCur;
+  if(flows.length<5||!(term>0)) return null;
+  flows.push([Date.now(),term]);
+  const t0=Math.min(...flows.map(f=>f[0]));
+  const npv=r=>flows.reduce((a,[ms,v])=>a+v/Math.pow(1+r,(ms-t0)/(365.25*864e5)),0);
+  let lo=-0.9,hi=3;
+  for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
+  return lo*100;
+}
 function homeHeroHTML(t){
   const m=mfTotals();
   const inv=t.inv+m.inv, cur=t.cur+m.cur, pl=cur-inv;
@@ -1443,6 +1465,8 @@ function homeHeroHTML(t){
     '</div>'+
     '<div class="gl"><span>Stocks + mutual funds</span><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span><span>ESOPs excluded</span></div>'+
+    (()=>{const c=combinedCagr(); return c===null?"":'<div class="cagr"><span class="hk" style="margin:0">CAGR</span>'+
+      '<span class="mono '+cls(c)+'" style="font-size:15px;font-weight:600">'+sgn(c)+Math.abs(c).toFixed(1)+'%</span></div>';})()+
   '</div>';
 }
 function homeHTML(t){

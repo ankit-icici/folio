@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v51";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v52";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1472,7 +1472,7 @@ function mfHeroHTML(){
     '</div>'+
     '<div class="gl"><span>'+Object.keys(mfunds()).length+' funds</span>'+
       '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span>'+
-      '<span>ex-HUF returns →</span></div>'+
+      '<span></span></div>'+
     '<div class="cagr"><span class="hk" style="margin:0">Abs '+
       '<b class="mono '+cls(R.absPct)+'" style="font-size:15px;font-weight:600"> '+sgn(R.absPct)+Math.abs(R.absPct).toFixed(1)+'%</b></span>'+
       '<span class="hk" style="margin:0">CAGR '+

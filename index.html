@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v55";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v56";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1374,15 +1374,24 @@ function mfWrite(fn){
   for(const k of ["funds","sips","swps","txs"]) if(!meta.mf[k]) meta.mf[k]={};
   fn(meta.mf); saveRemote();
 }
-function mfTotals(){
+function mfTotals(){          /* personal funds only - the HUF entity never joins a return */
   let inv=0,cur=0,day=0,dayBase=0;
   for(const f of Object.values(mfunds())){
+    if(!mfPersonal(f)) continue;
     const u=+f.units||0, nav=+f.nav||0;
     inv+=+f.inv||0; cur+=u*nav;
     if(+f.prevNav>0){ day+=u*(nav-f.prevNav); dayBase+=u*f.prevNav; }
   }
   return {inv,cur,pl:cur-inv,plPct:inv>0?(cur-inv)/inv*100:0,
           day,dayPct:dayBase>0?day/dayBase*100:0};
+}
+function hufTotals(){
+  let inv=0,cur=0;
+  for(const f of Object.values(mfunds())){
+    if(mfPersonal(f)) continue;
+    inv+=+f.inv||0; cur+=(+f.units||0)*(+f.nav||0);
+  }
+  return {inv,cur};
 }
 const mfPersonal=f=>!(f.who==="HUF");   /* returns cover every fund except HUF-held ones */
 function mfReturns(){
@@ -1483,7 +1492,8 @@ function homeHTML(t){
     '<div class="hrn"><b class="mono">'+kabs(cur)+'</b>'+
     '<span class="mono '+cls(pl)+'">'+skfmt(pl)+' ('+spct(plPct)+')</span></div>'+
     '<span class="chev">›</span></button>';
-  const nStocks=all().length, nFunds=Object.keys(mfunds()).length;
+  const nStocks=all().length;
+  const nFunds=Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length;
   return '<div class="hlist">'+
     row("stocks","Stocks",t.cur,t.pl,t.plPct,nStocks+" holdings · live NSE prices")+
     row("mf","Mutual funds",m.cur,m.pl,m.plPct,nFunds?nFunds+" funds · NAV updates daily":"tap to add funds")+
@@ -1501,7 +1511,7 @@ function mfHeroHTML(){
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+' <small>('+spct(m.plPct)+')</small></div></div>'+
       '<div class="r"><div class="hk">Day P&L</div><div class="hv mono '+cls(m.day)+'">'+(m.day?skfmt(m.day)+' <small>('+spct(m.dayPct)+')</small>':'—')+'</div></div>'+
     '</div>'+
-    '<div class="gl"><span>'+Object.keys(mfunds()).length+' funds</span>'+
+    '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length+' funds</span>'+
       '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span>'+
       '<span></span></div>'+
     '<div class="cagr"><span class="hk" style="margin:0">Abs '+

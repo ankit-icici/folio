@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v54";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v55";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1465,8 +1465,15 @@ function homeHeroHTML(t){
     '</div>'+
     '<div class="gl"><span>Stocks + mutual funds</span><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span><span>ESOPs excluded</span></div>'+
-    (()=>{const c=combinedCagr(); return c===null?"":'<div class="cagr"><span class="hk" style="margin:0">CAGR</span>'+
-      '<span class="mono '+cls(c)+'" style="font-size:15px;font-weight:600">'+sgn(c)+Math.abs(c).toFixed(1)+'%</span></div>';})()+
+    (()=>{const c=combinedCagr();
+      const F=mfunds(); let mInv=0,mCur=0;
+      for(const f of Object.values(F)) if(mfPersonal(f)){ mInv+=+f.inv||0; mCur+=(+f.units||0)*(+f.nav||0); }
+      const inv0=t.inv+mInv, ab=inv0>0?(t.cur+mCur-inv0)/inv0*100:0;
+      return '<div class="cagr"><span class="hk" style="margin:0">Abs '+
+        '<b class="mono '+cls(ab)+'" style="font-size:15px;font-weight:600"> '+sgn(ab)+Math.abs(ab).toFixed(1)+'%</b></span>'+
+        '<span class="hk" style="margin:0">CAGR '+
+        (c===null?'<b class="mono" style="font-size:15px">—</b>'
+          :'<b class="mono '+cls(c)+'" style="font-size:15px;font-weight:600"> '+sgn(c)+Math.abs(c).toFixed(1)+'%</b>')+'</span></div>';})()+
   '</div>';
 }
 function homeHTML(t){

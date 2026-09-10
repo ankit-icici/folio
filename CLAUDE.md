@@ -240,3 +240,5 @@ Schibsted Grotesk (UI), Spline Sans Mono (all figures). Full light/dark support 
 on `:root`, `@media (prefers-color-scheme: dark)` guarded with `:root:not([data-theme="light"])`,
 and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-first (max-width
 560 px, safe-area insets). Keep it that way.
+
+- `renderHeroOnly()` (5s interval) has its OWN copy of the per-tab hero switch - a new tab's hero must be added BOTH in `render()` and `renderHeroOnly()`, else the hero blanks a few seconds after opening the tab (bit the Funds dashboard in v56).

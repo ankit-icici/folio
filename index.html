@@ -431,7 +431,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v56";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v57";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -766,7 +766,7 @@ function renderIdx(){
 function renderHeroOnly(){
   const h=$("#hero"); if(!h) return;
   const v=view();
-  h.innerHTML=v==="home"?homeHeroHTML(totals(all())):(v==="stocks"?heroHTML(totals(all())):"");
+  h.innerHTML=v==="home"?homeHeroHTML(totals(all())):(v==="stocks"?heroHTML(totals(all())):(v==="mf"?mfHeroHTML():""));
   if(v==="home"&&ready){ const c=$("#content"); if(c&&c.querySelector(".hrow")) c.innerHTML=homeHTML(totals(all())), bind(); }
   renderIdx();
 }
@@ -1405,16 +1405,28 @@ function mfReturns(){
     const ms=Date.parse(t.date+"T00:00:00"); if(!isFinite(ms)) continue;
     flows.push([ms,(t.kind==="swp"||t.kind==="out"?1:-1)*(+t.amt||0)]);
   }
-  let cagr=null;
-  if(flows.length>4&&cur>0){
-    flows.push([Date.now(),cur]);
-    const t0=Math.min(...flows.map(f=>f[0]));
-    const npv=r=>flows.reduce((a,[ms,v])=>a+v/Math.pow(1+r,(ms-t0)/(365.25*864e5)),0);
-    let lo=-0.9,hi=3;
-    for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
-    cagr=lo*100;
-  }
+  const cagr=flows.length>4?mfXirr(flows,cur):null;
   return {inv,cur,absPct:inv>0?(cur-inv)/inv*100:0,cagr};
+}
+function mfXirr(flows,cur){   /* money-weighted annual rate; null when too young to annualize */
+  if(flows.length<2||!(cur>0)) return null;
+  const t0=Math.min(...flows.map(x=>x[0]));
+  if(Date.now()-t0<90*864e5) return null;
+  const fl=flows.concat([[Date.now(),cur]]);
+  const npv=r=>fl.reduce((a,[ms,v])=>a+v/Math.pow(1+r,(ms-t0)/(365.25*864e5)),0);
+  let lo=-0.9,hi=3;
+  for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
+  return lo*100;
+}
+function mfFundCagr(id){
+  const f=mfunds()[id]; if(!f) return null;
+  const flows=[];
+  for(const t of Object.values(mfTxs())){
+    if(t.fid!==id) continue;
+    const ms=Date.parse(t.date+"T00:00:00"); if(!isFinite(ms)) continue;
+    flows.push([ms,(t.kind==="swp"||t.kind==="out"?1:-1)*(+t.amt||0)]);
+  }
+  return mfXirr(flows,(+f.units||0)*(+f.nav||0));
 }
 let mfSyncAt=0;
 async function mfSyncNav(){
@@ -1509,7 +1521,6 @@ function mfHeroHTML(){
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(m.cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(m.inv)+'</div></div>'+
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(m.pl)+'">'+skfmt(m.pl)+' <small>('+spct(m.plPct)+')</small></div></div>'+
-      '<div class="r"><div class="hk">Day P&L</div><div class="hv mono '+cls(m.day)+'">'+(m.day?skfmt(m.day)+' <small>('+spct(m.dayPct)+')</small>':'—')+'</div></div>'+
     '</div>'+
     '<div class="gl"><span>'+Object.values(mfunds()).filter(f=>mfPersonal(f)&&(+f.units||0)>0).length+' funds</span>'+
       '<span class="live"><i></i>NAV'+(navDates.length?' · '+esc(navDates[0]):"")+'</span>'+
@@ -1533,32 +1544,19 @@ function mfTxRow(t,showFund){
     (showFund?'<div class="fs mono">'+esc(dl)+'</div>':"")+'</div>'+
     '<div class="fa mono '+(outg?"gain":"")+'">'+(outg?"+":"−")+rupee(+t.amt||0)+'</div></div>';
 }
-function mfDetailHTML(id){
-  const f=mfunds()[id];
-  if(!f){ mfSel=null; return mfPortHTML(); }
+function mfFundTxHTML(id){
   const [from,to]=mfWindow();
   const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===id&&t.date>=from&&t.date<=to)
     .sort((a,b)=>a[1].date<b[1].date?1:-1);
   let inn=0,out=0;
   for(const [,t] of list){ if(t.kind==="swp"||t.kind==="out") out+=+t.amt||0; else inn+=+t.amt||0; }
-  const u=+f.units||0, nav=+f.nav||0, cur=u*nav, pl=cur-(+f.inv||0);
-  return '<button class="linky" id="mfBack" style="margin-top:14px">‹ All funds</button>'+
-    '<div class="card" style="margin-top:10px"><div class="chead"><span class="t">'+esc(f.name)+'</span>'+
-      (f.who?'<span class="tag b">'+esc(f.who)+'</span>':"")+'<span class="sp"></span></div>'+
-    '<div class="g9 mono">'+
-      kv("Units",u.toLocaleString("en-IN",{maximumFractionDigits:3}))+
-      kv("NAV",price(nav))+kv("Current value",rupee(cur),1)+
-      kv("Invested",rupee(+f.inv||0))+
-      kv("P&L",'<span class="'+cls(pl)+'">'+smoney(pl)+'</span>')+
-      kv("Return",'<span class="'+cls(pl)+'">'+spct(f.inv>0?pl/f.inv*100:0)+'</span>',1)+
-    '</div>'+
-    '<div class="acts"><button data-mfedit="'+id+'">Edit</button></div></div>'+
-    mfChipsHTML()+
+  return '<div class="mfx">'+mfChipsHTML()+
     '<div class="ftot"><div class="ft1"><span>'+list.length+' transaction'+(list.length===1?"":"s")+'</span>'+
       '<b class="mono '+cls(out-inn)+'">'+smoney(out-inn)+'</b></div>'+
     '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> in · <span class="mono gain">+'+rupee(out)+'</span> out</div></div>'+
     (list.length?'<div class="elist" style="padding:2px 16px">'+list.map(([,t])=>mfTxRow(t,false)).join("")+'</div>'
-      :'<p class="hint">No transactions in this period.</p>');
+      :'<p class="hint">No transactions in this period.</p>')+
+    '<div class="acts" style="padding:0 4px 6px"><button data-mfedit="'+id+'">Edit fund</button></div></div>';
 }
 function mfChipsHTML(){
   return '<div class="chips" style="margin-top:10px">'+
@@ -1580,17 +1578,17 @@ function mfPortHTML(){
       kv("NAV",price(nav))+kv("Current value",rupee(cur),1)+
       kv("Invested",rupee(inv))+
       kv("P&L",'<span class="'+cls(pl)+'">'+smoney(pl)+'</span>')+
-      kv("Return",'<span class="'+cls(pl)+'">'+spct(inv>0?pl/inv*100:0)+'</span>',1)+
-      '</div></div>';
+      kv("CAGR",(cg=>cg===null?'—':'<span class="'+cls(cg)+'">'+spct(cg)+'</span>')(mfFundCagr(id)),1)+
+      '</div></div>'+(mfSel===id?mfFundTxHTML(id):"");
   };
   const per=F.filter(([,f])=>f.who!=="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
   const huf=F.filter(([,f])=>f.who==="HUF").sort((a,b)=>(+b[1].units*+b[1].nav)-(+a[1].units*+a[1].nav));
   return (per.length?'<div class="secthead">Personal</div><div class="list" style="margin-top:10px">'+per.map(card).join("")+'</div>':"")+
     (huf.length?'<div class="secthead">HUF</div><div class="list" style="margin-top:10px">'+huf.map(card).join("")+'</div>':"")+
-    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions. NAVs refresh from AMFI once a day.</p>';
+    '<p class="hint" style="padding:0 4px">Tap a fund for its transactions, tap again to collapse. NAVs refresh from AMFI once a day.</p>';
 }
 function mfHTML(){
-  if(mfTab==="port") return mfSel?mfDetailHTML(mfSel):mfPortHTML();
+  if(mfTab==="port") return mfPortHTML();
   if(mfTab==="sip"||mfTab==="swp") return mfPlansHTML(mfTab);
   return mfTxOnlyHTML();
 }
@@ -1915,10 +1913,9 @@ function bind(){
   document.querySelectorAll("[data-mtab]").forEach(b=>
     b.addEventListener("click",()=>{mfTab=b.dataset.mtab; mfSel=null; render();}));
   document.querySelectorAll("[data-mfund]").forEach(r=>
-    r.addEventListener("click",()=>{mfSel=r.dataset.mfund; render();}));
+    r.addEventListener("click",()=>{mfSel=(mfSel===r.dataset.mfund?null:r.dataset.mfund); render();}));
   document.querySelectorAll("[data-mfedit]").forEach(b=>
     b.addEventListener("click",e=>{e.stopPropagation(); mfSheet(b.dataset.mfedit);}));
-  const mb=$("#mfBack"); if(mb) mb.addEventListener("click",()=>{mfSel=null; render();});
   document.querySelectorAll("[data-mfadd]").forEach(b=>
     b.addEventListener("click",()=>{const k=b.dataset.mfadd; k==="tx"?mfTxSheet():mfPlanSheet(k);}));
   document.querySelectorAll("[data-mfplan]").forEach(b=>

@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------
-   Synced with the deployed script (Version 12, ping v:12) on 2026-09-10.
+   Synced with the deployed script (Version 13, ping v:13) on 2026-09-10.
    The Apps Script editor remains the source of truth - re-read it before
    changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
@@ -10,20 +10,37 @@ function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setM
 function sha_(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(b){b=(b+256)%256;return (b<16?'0':'')+b.toString(16);}).join('');}
 function props_(){return PropertiesService.getScriptProperties();}
 function cache_(){return CacheService.getScriptCache();}
-function locked_(){return Number(cache_().get('fails')||0)>30;}
-function fail_(){var c=cache_();c.put('fails',String(Number(c.get('fails')||0)+1),600);}
+/* Brute-force guard, per account and per credential.
+   A device still holding a PIN that no longer works retries forever (the app
+   re-prices every 15s). The old single global counter let one such device lock
+   every login out, owner included. Now: each distinct wrong credential counts
+   ONCE towards the account's strike count, so a looping stale device costs one
+   strike, while someone guessing many different PINs still trips the lock. */
+function locked_(u){return Number(cache_().get('fu:'+u)||0)>20;}
+function fail_(u,h){
+  var c=cache_(), k='fh:'+String(h).slice(0,16);
+  var n=Number(c.get(k)||0)+1;
+  c.put(k,String(n),1800);
+  if(n===1) c.put('fu:'+u,String(Number(c.get('fu:'+u)||0)+1),600);
+}
+function clearLock(){                      /* run from the editor to unlock at once */
+  var c=cache_(); c.remove('fails');
+  var ps=props_().getKeys?props_().getKeys():[];
+  for(var i=0;i<ps.length;i++) if(ps[i].indexOf('u:')===0) c.remove('fu:'+ps[i].slice(2));
+  return 'lock cleared';
+}
 function normU_(u){u=String(u||'').trim().toLowerCase();return /^[a-z0-9_-]{3,20}$/.test(u)?u:null;}
 function auth_(p){
-  if(locked_()) return {err:'locked'};
   var u=normU_(p.u), pin=String(p.p||'');
   if(!u||pin.length<4) return {err:'unauthorized'};
-  var rec=props_().getProperty('u:'+u);
-  if(!rec){fail_();return {err:'unauthorized'};}
+  if(locked_(u)) return {err:'locked'};
   var h=sha_(u+':'+pin);
+  var rec=props_().getProperty('u:'+u);
+  if(!rec){fail_(u,h);return {err:'unauthorized'};}
   if(h===rec) return {u:u,h:rec};
   var g=props_().getProperty('g:'+u);          // advisor key: opens the owner's file, read-only, no esops
   if(g&&h===g) return {u:u,h:rec,guest:true};
-  fail_();return {err:'unauthorized'};
+  fail_(u,h);return {err:'unauthorized'};
 }
 function fileFor_(h){
   var name=FILE_PREFIX+h.slice(0,16)+'.json';
@@ -77,7 +94,7 @@ function quotes_(csv){
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:12});
+  if(p.action==='ping') return json_({ok:true,v:13});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
@@ -155,9 +172,9 @@ function doPost(e){
   var body={};
   try{body=JSON.parse(e.postData.contents);}catch(err){return json_({error:'bad_json'});}
   if(body.action==='register'){
-    if(locked_()) return json_({error:'locked'});
     var u=normU_(p.u), pin=String(p.p||'');
     if(!u) return json_({error:'bad_username'});
+    if(locked_(u)) return json_({error:'locked'});
     if(pin.length<4) return json_({error:'pin_too_short'});
     if(props_().getProperty('u:'+u)) return json_({error:'username_taken'});
     props_().setProperty('u:'+u,sha_(u+':'+pin));

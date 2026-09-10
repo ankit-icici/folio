@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v64";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v65";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -473,7 +473,7 @@ function cycleTheme(){
 /* ---------- persistence ---------- */
 function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta,idx}));}catch(e){} }
 async function saveNow(force){
-  if(isGuest()){ pendingSave=false; return; }
+  if(isGuest()||Date.now()<backoffUntil){ pendingSave=false; return; }
   try{
     const body=JSON.stringify({action:"save",force:force===true,
       data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),...(meta.mf?{mf:meta.mf}:{}),savedAt:new Date().toISOString()}});
@@ -496,14 +496,25 @@ function saveRemote(force){
   clearTimeout(saveTimer); pendingSave=true; renderHeroOnly();
   saveTimer=setTimeout(()=>saveNow(force),1200);
 }
-let lastLoadAt=0;
+let lastLoadAt=0, backoffUntil=0;
+function authGone(err){
+  if(err==="locked"){          /* someone tripped the strike guard - wait it out */
+    backoffUntil=Date.now()+300000; live=false; sync="off"; renderHeroOnly(); return true;
+  }
+  if(err==="unauthorized"){    /* PIN changed or access revoked - back to sign-in */
+    backoffUntil=Date.now()+864e5; live=false; sync="off";
+    if(AUTH) signOut();
+    return true;
+  }
+  return false;
+}
 async function loadRemote(){
-  if(!AUTH) return false;
+  if(!AUTH||Date.now()<backoffUntil) return false;
   try{
     const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean).concat(esopSyms()))].concat(INDICES.map(i=>i.s));
     const r=await fetch(api("action=load&symbols="+syms.join(",")));
     const j=await r.json();
-    if(j.error){ ready=true; live=false; sync="off"; return false; }
+    if(j.error){ ready=true; live=false; sync="off"; authGone(j.error); return false; }
     if(j.guest&&!AUTH.g){ AUTH.g=1; try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(e2){} }
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
       if(j.data.history) meta.history=j.data.history;
@@ -541,13 +552,14 @@ function applyQuotes(q){
   return hit;
 }
 async function pollQuotes(){
-  if(!AUTH||document.hidden) return;
+  if(!AUTH||document.hidden||Date.now()<backoffUntil) return;
   const syms=[...new Set(Object.values(stocks).map(s=>s.symbol).filter(Boolean).concat(esopSyms()))];
   const want=syms.concat(INDICES.map(i=>i.s));
   if(!want.length) return;
   try{
     const r=await fetch(api("action=quotes&symbols="+want.join(",")));
     const j=await r.json();
+    if(j.error&&authGone(j.error)) return;
     if(j.quotes){
       lastQuotes=j.quotes;
       for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];

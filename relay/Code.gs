@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------
-   Synced with the deployed script (Version 11, ping v:11) on 2026-09-10.
+   Synced with the deployed script (Version 12, ping v:12) on 2026-09-10.
    The Apps Script editor remains the source of truth - re-read it before
    changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
@@ -77,7 +77,7 @@ function quotes_(csv){
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:11});
+  if(p.action==='ping') return json_({ok:true,v:12});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
@@ -90,13 +90,16 @@ function doGet(e){
     if(p.symbols){ var q=quotes_(p.symbols); if(q) res.quotes=q; }
     return json_(res);
   }
-  if(a.guest) return json_({error:'forbidden'}); // snapshots/restore are owner-only
+  /* market look-ups are public data - the advisor keeps those; only the
+     portfolio's own history and every write stay with the owner */
   if(p.action==='snapshots'){
+    if(a.guest) return json_({error:'forbidden'});
     var fo=bkFolder_(),it=fo.getFiles(),out=[];
     while(it.hasNext()){var g=it.next();var n=g.getName();if(n.indexOf('snap-'+a.h.slice(0,8)+'-')===0||n.indexOf('keep-'+a.h.slice(0,8)+'-')===0)out.push(n);}
     return json_({snapshots:out.sort()});
   }
   if(p.action==='snapshot'){
+    if(a.guest) return json_({error:'forbidden'});
     var key=String(p.day||''); var pre=(key.length===7?'keep-':'snap-');
     var nm=pre+a.h.slice(0,8)+'-'+key+'.json';
     var it2=bkFolder_().getFilesByName(nm);

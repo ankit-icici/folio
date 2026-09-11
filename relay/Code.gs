@@ -1,5 +1,8 @@
 /* ------------------------------------------------------------------------
-   Synced with the deployed script (Version 15, ping v:15) on 2026-09-11.
+   Deployed web app is Version 15 (ping v:15). This file also carries the
+   monthly-backup functions that live in the project HEAD (ping would say
+   v:16): triggers run head code, the web app runs the pinned version, which
+   is why the backup could be added without touching the live app's scopes.
    The Apps Script editor remains the source of truth - re-read it before
    changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
@@ -110,9 +113,60 @@ function shrunk_(old,inc){
   if(old.history&&!inc.history) return {k:'history',o:1,n:0};
   return null;
 }
+
+/* ---- monthly off-Drive backup -------------------------------------------
+   Everything else lives in one Google account: the live file, the daily
+   snapshots and the monthly archive all sit in this Drive. One email a month
+   with the JSON attached puts a copy outside that single point of failure.
+   Run setupMonthlyBackup() once from the editor to install the trigger. */
+var BACKUP_USERS = 'ankit';        // comma-separated usernames to back up
+
+function monthlyBackup(){
+  var names = String(props_().getProperty('backup_users')||BACKUP_USERS)
+                .split(',').map(function(s){return s.trim();}).filter(String);
+  var to = Session.getEffectiveUser().getEmail();
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd');
+  var atts = [], lines = [];
+  for (var i=0;i<names.length;i++){
+    var h = props_().getProperty('u:'+names[i]);
+    if (!h) { lines.push(names[i]+': no such account'); continue; }
+    var ff = fileFor_(h);
+    if (!ff.f) { lines.push(names[i]+': no data file yet'); continue; }
+    var txt = ff.f.getBlob().getDataAsString(), d = {};
+    try { d = JSON.parse(txt); } catch(e){}
+    atts.push(Utilities.newBlob(txt, 'application/json', 'folio-'+names[i]+'-'+stamp+'.json'));
+    lines.push(names[i]+': '+count_(d,'stocks')+' stocks, '+count_(d,'txns')+' transactions, '+
+               count_(d,'mf','funds')+' funds, '+count_(d,'mf','txs')+' fund transactions, '+
+               count_(d,'esops','grants')+' ESOP grants. Last saved '+(d.savedAt||'unknown')+'.');
+  }
+  if (!atts.length) return 'nothing to back up';
+  MailApp.sendEmail({
+    to: to,
+    subject: 'Folio backup - '+Utilities.formatDate(new Date(),'Asia/Kolkata','MMMM yyyy'),
+    body: 'Your monthly Folio backup is attached as JSON.\n\n'+lines.join('\n')+
+          '\n\nWhy this email exists: the live file, the daily snapshots and the monthly archive all\n'+
+          'sit in this one Google account. This attachment is the copy that survives losing it.\n'+
+          'Keep it (or forward it somewhere else) - deleting the email deletes that protection.\n\n'+
+          'To restore: open Folio, tap the gear, choose "Use a saved copy", and paste the\n'+
+          'contents of the attached file.',
+    attachments: atts
+  });
+  return 'sent to '+to;
+}
+
+function setupMonthlyBackup(){
+  var t = ScriptApp.getProjectTriggers();
+  for (var i=0;i<t.length;i++)
+    if (t[i].getHandlerFunction()==='monthlyBackup') ScriptApp.deleteTrigger(t[i]);
+  ScriptApp.newTrigger('monthlyBackup').timeBased()
+    .onMonthDay(1).atHour(7).inTimezone('Asia/Kolkata').create();
+  if (!props_().getProperty('backup_users')) props_().setProperty('backup_users', BACKUP_USERS);
+  return 'trigger installed: 1st of every month, about 7am IST';
+}
+
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:15});
+  if(p.action==='ping') return json_({ok:true,v:16});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});

@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v70";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v71";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -472,11 +472,19 @@ function cycleTheme(){
 
 /* ---------- persistence ---------- */
 function cacheLocal(){ try{localStorage.setItem("nivesh_cache_"+AUTH.u,JSON.stringify({stocks,txns,meta,idx}));}catch(e){} }
+/* The document, in one place. Anything that leaves the app - a save, an export,
+   a comparison - must go through here, or a section gets forgotten again. */
+function liveDoc(){
+  return {stocks,txns,
+    ...(meta.history?{history:meta.history}:{}),
+    ...(meta.esops?{esops:meta.esops}:{}),
+    ...(meta.mf?{mf:meta.mf}:{})};
+}
 async function saveNow(force){
   if(isGuest()||Date.now()<backoffUntil){ pendingSave=false; return; }
   try{
     const body=JSON.stringify({action:"save",force:force===true,
-      data:{stocks,txns,...(meta.history?{history:meta.history}:{}),...(meta.esops?{esops:meta.esops}:{}),...(meta.mf?{mf:meta.mf}:{}),savedAt:new Date().toISOString()}});
+      data:{...liveDoc(),savedAt:new Date().toISOString()}});
     /* keepalive lets the save finish after the tab hides, but the browser rejects
        keepalive bodies over 64KB outright - a large document must go without it */
     const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
@@ -2550,6 +2558,23 @@ function docSummary(d){
          nOf(d,"esops","grants")+" ESOP grants"+(d.history?" · imported history":"")+
          (d.savedAt?"<br>saved "+esc(String(d.savedAt).slice(0,16).replace("T"," "))+" UTC":"");
 }
+/* A copy taken before a section existed (or by an older build) will remove that
+   section on restore - applyDoc clears what the document lacks, by design. Say so
+   loudly before anything is overwritten. */
+function docLosses(d){
+  const now=liveDoc(), out=[];
+  const S=[["stocks",["stocks"],"stocks"],["txns",["txns"],"transactions"],
+           ["funds",["mf","funds"],"funds"],["fund transactions",["mf","txs"],"fund transactions"],
+           ["SIPs",["mf","sips"],"SIPs"],["SWPs",["mf","swps"],"SWPs"],
+           ["ESOP grants",["esops","grants"],"ESOP grants"],["ESOP lots",["esops","lots"],"ESOP lots"]];
+  for(const [,path,label] of S){
+    const a=nOf(now,path[0],path[1]), b=nOf(d,path[0],path[1]);
+    if(a>0&&b===0) out.push("all "+a+" "+label);
+    else if(a>0&&b<a) out.push((a-b)+" of "+a+" "+label);
+  }
+  if(now.history&&!d.history) out.push("your imported history");
+  return out;
+}
 function isFolioDoc(d){
   return !!(d&&typeof d==="object"&&(d.stocks||d.txns||d.mf||d.esops));
 }
@@ -2579,6 +2604,12 @@ async function restoreSheet(){
       const j=await fetch(api("action=snapshot&day="+encodeURIComponent(b.dataset.key))).then(r=>r.json());
       if(j.error||!j.data) return showErr("#rsErr","Couldn’t load that version. Try another date.");
       if(!isFolioDoc(j.data)) return showErr("#rsErr","That version looks empty — try another date.");
+      const lost=docLosses(j.data);
+      if(lost.length&&b.dataset.warned!=="1"){
+        b.dataset.warned="1"; b.dataset.armed="";
+        b.textContent="Removes "+lost.join(", ")+" — tap twice to accept";
+        return;
+      }
       applyDoc(j.data);
       saveRemote(true); closeSheet(); setTab("home");
     }catch(e2){ showErr("#rsErr","Couldn’t reach your data right now."); }
@@ -2602,8 +2633,11 @@ function importBackupSheet(){
       if(!isFolioDoc(d)) return showErr("#rErr","This doesn’t look like a Folio copy.");
       ready=d;
       $("#rErr").textContent="";
-      $("#rSum").innerHTML="<b>This copy holds</b><br>"+docSummary(d);
-      b.textContent="Replace everything with this copy";
+      const lost=docLosses(d);
+      $("#rSum").innerHTML="<b>This copy holds</b><br>"+docSummary(d)+
+        (lost.length?'<br><br><b style="color:var(--loss)">Restoring it removes '+esc(lost.join(", "))+
+          '</b><br>Older copies were saved before some sections existed.':"");
+      b.textContent=lost.length?"I understand — replace anyway":"Replace everything with this copy";
       return;
     }
     applyDoc(ready); saveRemote(true); closeSheet(); setTab("home");
@@ -2628,7 +2662,7 @@ function cfgSheet(){
     '<button class="ghost" id="sHist">Go back to an earlier version</button>'+
     '<p class="hint" style="margin-top:6px">Every day’s version is kept, plus one for every month — forever.</p>'+
     '<button class="ghost" id="sExp">Save a copy to this device</button>'+
-    '<p class="hint" style="margin-top:6px">Optional. A file you can keep anywhere as your own backup.</p>'+
+    '<p class="hint" style="margin-top:6px">Everything in one file — shares, transactions, funds, ESOPs and imported history. Keep it anywhere as your own backup.</p>'+
     '<div class="secthead">Advisor access</div>'+
     '<div class="f"><label>Advisor PIN — view-only, ESOPs stay hidden</label><input id="gPin" class="mono" inputmode="numeric" autocomplete="off" placeholder="4+ digits, not your own PIN"></div>'+
     '<div class="acts"><button id="gSet">Set / change</button><button id="gOff">Revoke access</button></div>'+
@@ -2676,7 +2710,7 @@ function cfgSheet(){
     }catch(e2){ showErr("#sErr","Could not reach the server."); }
   });
   $("#sExp").addEventListener("click",e=>{
-    const blob=new Blob([JSON.stringify({stocks,txns,exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
+    const blob=new Blob([JSON.stringify({...liveDoc(),savedAt:meta.updatedAt||new Date().toISOString(),exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download="folio-"+today()+".json"; a.click(); URL.revokeObjectURL(a.href);
     e.currentTarget.textContent="Saved to your downloads";

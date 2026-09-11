@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v71";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v72";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2712,7 +2712,11 @@ function cfgSheet(){
   $("#sExp").addEventListener("click",e=>{
     const blob=new Blob([JSON.stringify({...liveDoc(),savedAt:meta.updatedAt||new Date().toISOString(),exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    a.download="folio-"+today()+".json"; a.click(); URL.revokeObjectURL(a.href);
+    /* a name that is obvious in a phone's Files app: capital F to find by sight,
+       ISO date so copies sort oldest-to-newest, clock time so two in a day differ */
+    const ts=new Date(), p2=n=>String(n).padStart(2,"0");
+    a.download="Folio-backup-"+today()+"-"+p2(ts.getHours())+p2(ts.getMinutes())+".json";
+    a.click(); URL.revokeObjectURL(a.href);
     e.currentTarget.textContent="Saved to your downloads";
     setTimeout(()=>{const b=$("#sExp"); if(b) b.textContent="Save a copy to this device";},2500);
   });

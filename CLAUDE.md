@@ -221,6 +221,12 @@ the backup was added to head and the web app deliberately left on the older vers
 the web app from head would make the live app demand the new scopes; only do that after the
 owner has authorised them, and never mid-market-day.
 
+### Backup file naming
+
+Device export: `Folio-backup-YYYY-MM-DD-HHMM.json` (capital F so it is findable by eye in a
+phone's Files app, ISO date so copies sort chronologically, clock time so two saves in one day
+do not collide). Email attachment: `Folio-backup-<user>-YYYY-MM-DD.json`. Keep both prefixes.
+
 ### Restores must apply the WHOLE document
 
 Both restore paths (server snapshot and pasted file) used to do `stocks=d.stocks; txns=d.txns`

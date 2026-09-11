@@ -11,7 +11,7 @@ anything — the operational gotchas below have all bitten before.
 | App | https://ankit-icici.github.io/folio/ (GitHub Pages, `main` branch, root) |
 | Repo | https://github.com/ankit-icici/folio (public — code only, **never** portfolio data) |
 | Backend | Google Apps Script web app on the owner's Google account (`alliances.ankit@gmail.com`) |
-| Apps Script project | `https://script.google.com/home/projects/1CpID_Y5jaqO31kbsUSqOEFVgaNPjilXJV1xxO15piummuwCAKSPB-njp/edit` |
+| Apps Script project | **"Folio backend (portfolio app)"** — `https://script.google.com/home/projects/1CpID_Y5jaqO31kbsUSqOEFVgaNPjilXJV1xxO15piummuwCAKSPB-njp/edit` |
 
 The backend `/exec` URL is hardcoded as `BACKEND` at the top of the `<script>` in `index.html`.
 `relay/Code.gs` is the deployed backend source, kept in sync by hand.
@@ -198,14 +198,20 @@ refuses any save that empties a section (`stocks`, `txns`, `mf.funds`, `mf.txs`,
 hole: the v62 login bug left `meta.mf` unset in memory, and the old stocks-only guard would have
 happily written the funds away.
 
-1. Server rejects any save that zeroes out stocks or drops >50% of transactions
-   (`suspicious_save`) unless the client passes `force:true` — only the Restore flows do.
+1. Server rejects any save that empties a section, halves one that held >= 20 rows, or drops
+   `history` (`suspicious_save`), unless the client passes `force:true` — only the Restore
+   flows do. See `shrunk_` above for the exact section list.
 2. Before the first save each day, the previous state is snapshotted to the Drive folder
    **"Folio Backups"**: `snap-<hash8>-YYYY-MM-DD.json` (pruned after 60 days) and
    `keep-<hash8>-YYYY-MM.json` (**permanent, never pruned**).
 3. The app re-loads from the server when it regains focus after >2 min, so a stale tab can't
    overwrite newer data.
-4. ⚙ Account → Restore points browses and restores any snapshot in-app.
+4. ⚙ Account → *Go back to an earlier version* browses and restores any snapshot in-app;
+   *Save a copy to this device* writes the whole document (`liveDoc()`) as a file. Both restore
+   routes preview the copy's contents and name what restoring it would **remove** first.
+5. Wrong-PIN attempts are counted per account and a given wrong credential only ever costs one
+   strike, so one stale device cannot lock the owner out (see the lockout gotcha).
+6. The monthly email below puts a copy outside the Google account entirely.
 
 ### Monthly off-Drive backup
 
@@ -217,11 +223,19 @@ running against Head). The Apps Script project is named **"Folio backend (portfo
 snapshots and the monthly archive all sit in one Google account - the email is the copy that
 survives losing it.
 
-**Scope trap:** these functions need Mail + Trigger scopes the relay never had. Time-driven
-triggers run the project **head**, while the web app runs its **pinned deployed version** - so
-the backup was added to head and the web app deliberately left on the older version. Redeploying
-the web app from head would make the live app demand the new scopes; only do that after the
-owner has authorised them, and never mid-market-day.
+**Head vs deployed (deliberate, do not "fix"):** the backup functions live in the project
+**head**; time-driven triggers run head, while the web app serves its **pinned version**. So
+`?action=ping` from the live app answers **v:15** while head reads `v:16` - that gap is the
+design, not drift. It was done so the live app could never be blocked on scopes it had not been
+granted. (In the event the owner's authorisation already covered Mail + Trigger, so `Run` needed
+no consent screen - but keep the split anyway: redeploying head to the web app is an unnecessary
+risk with no benefit, and never worth doing mid-market-day.)
+
+**Verified end to end on 2026-09-11**, not just by reading code: the trigger was installed and
+listed on the Triggers page, `monthlyBackup()` was run once, the mail arrived, and the attachment
+was downloaded and checked. Its SHA-256 equalled the stored document's byte for byte (86,004 B),
+and feeding that file alone to the deployed app's `applyDoc()` from an empty state rebuilt every
+section and re-serialised identically. Re-run that proof after any change to the document shape.
 
 ### Backup file naming
 
@@ -344,8 +358,7 @@ and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-f
 - Relay v11: a second per-account PIN stored as script property `g:<user>` (sha, same scheme as `u:<user>`). `auth_` returns `{guest:true}` for it; `load` strips `esops` server-side and tags the reply `guest:true`; every write (`save`, `setguest`, `unregister`) and `snapshots`/`snapshot` return `forbidden` for guests.
 - Owner sets/revokes it from Account -> "Advisor access" (POST `{action:'setguest',gp}`; empty gp revokes).
 - Lockout gotcha (relay v13): the brute-force guard used ONE global 'fails' counter (>30 in 10 min = every login refused, owner included). The app re-prices every 15s, so a single device holding a revoked/changed PIN burned 4 strikes a minute and locked the account out. v13 counts per account (`fu:<user>`, >20) and each distinct wrong credential (`fh:<hash>`) adds only its FIRST failure, so a looping stale device costs 1 strike. `clearLock()` in the editor clears the counters. Client v65: `authGone()` stops the polls - 'locked' backs off 5 min, 'unauthorized' signs out to the login screen.
-- Partial/full fund redemption (v67): `mfRedeemSheet(id)` is the only correct way out - it cuts units, releases cost basis pro-rata (average cost), and writes an `out` tx so XIRR sees the money back. A full redemption leaves the fund at units 0 / inv 0 (closed) so its flows keep counting; the fund sheet's Delete now also purges that fund's txs/sips/swps and is only for entries added by mistake. The Lumpsum diary never moves units.
-- Home's `+` opens `addWhatSheet()` (stock or fund) because Home holds both kinds; Stocks/Funds/ESOP tabs go straight to their own add sheet.
+- Home's `+` opens `addWhatSheet()` (stock or fund) because Home holds both kinds; Stocks/Funds/ESOP tabs go straight to their own add sheet. (Redemption lives under **Mutual funds** above.)
 - `guestGuard()` fronts every mutating sheet, so the advisor keeps the whole UI (including the `+`) but each editing door answers "View-only access". `maskGuard()` does the same while the privacy shutter is on.
 - Private funds (relay v14 + client v69): a fund with `priv:1` in `meta.mf.funds` is deleted from every GUEST load, along with its sips/swps/txs (and a swp's `to` is dropped if it pointed at one). **It is also outside every aggregate in the OWNER's view** - `mfCounted = f => !(f.who==="HUF") && !f.priv` gates `mfTotals`, `mfReturns`, `combinedCagr`, the Home hero and the fund count, and the SIP/SWP headline totals exclude private plans (surfaced as a separate "plus X/month on private funds" line). The point is that the owner's dashboards tie to the advisor's official app figure for figure, always. Private funds stay visible in Portfolio under "Private - outside every total", with their own per-fund CAGR, and `privTotals()` exists if a private subtotal is ever wanted.
 - `hufTotals()` must test `f.who==="HUF"` directly, NOT `!mfCounted(f)` - otherwise private funds silently land in the HUF subtotal.

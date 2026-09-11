@@ -35,6 +35,7 @@ A minimal, installable PWA for tracking a personal Indian portfolio end to end �
   - `POST {action:setguest, gp}` — set (or, with an empty `gp`, revoke) the account's view-only advisor PIN. A guest session may only read: it gets the portfolio with `esops` and every `priv` fund removed, and any write or snapshot call is refused
   - `GET action=snapshots` / `GET action=snapshot&day=…` — restore points
   - `POST {action:unregister}` — delete the account, its data, and its snapshots
+  - `monthlyBackup()` / `setupMonthlyBackup()` — not endpoints but scheduled work: a time-driven trigger that emails the account JSON to the owner monthly
 - `sw.js` + `manifest.webmanifest` — installable, offline-capable shell
 - `CLAUDE.md` — architecture notes, release runbook, and hard-won gotchas for future work
 
@@ -55,15 +56,17 @@ Losing data should take deliberate effort, not a bad day:
 1. **Write guard** — the server refuses any save that would empty **any** section of the document (stocks, transactions, funds, fund transactions, SIPs, SWPs, ESOP grants or lots) or halve a large one, and refuses to drop an imported history, unless the client explicitly passes `force:true` (only the in-app restore flows do). A bug in the app therefore cannot quietly erase a category.
 2. **Automatic snapshots** — before the first save of each day, the previous state is copied to a `Folio Backups` folder in the host's Drive: a **daily** restore point (kept 60 days) and a **monthly archive that is never deleted**.
 3. **In-app recovery** — ⚙ Account → *Go back to an earlier version* lists every snapshot in plain language and restores it in two taps. No files, no pasting. Restores apply the **whole** document — stocks, transactions, funds, ESOPs and imported history — and show you what a copy contains before it replaces anything.
-4. **Monthly off-Drive copy** — the backend can email the account JSON to the owner on the 1st of each month (`setupMonthlyBackup()`), so a copy survives losing the Google account that hosts everything else.
-5. **Stale-tab protection** — a tab returning to the foreground re-syncs from the server before it can save, so an old tab can't overwrite newer data.
-6. **Blast-radius limits on the rate limiter** — wrong-PIN attempts are counted per account, and a given wrong credential only ever costs one strike, so a stale device retrying a revoked PIN can never lock the real owner out.
-7. Plus Google Drive's own file revisions and a per-device local cache.
+4. **Your own file** — ⚙ Account → *Save a copy to this device* writes the **entire** document (shares, transactions, funds, ESOPs, imported history) as `Folio-backup-YYYY-MM-DD-HHMM.json`, named so it is easy to spot in a phone's Files app and sorts chronologically. Restoring it warns you first if the copy is missing anything you currently hold.
+5. **Monthly off-Drive copy** — run `setupMonthlyBackup()` once and the backend emails the account JSON to the owner on the 1st of each month (`Folio-backup-<user>-YYYY-MM-DD.json`), so a copy survives losing the Google account that hosts everything else.
+6. **Stale-tab protection** — a tab returning to the foreground re-syncs from the server before it can save, so an old tab can't overwrite newer data.
+7. **Blast-radius limits on the rate limiter** — wrong-PIN attempts are counted per account, and a given wrong credential only ever costs one strike, so a stale device retrying a revoked PIN can never lock the real owner out.
+8. Plus Google Drive's own file revisions and a per-device local cache.
 
 ## Host your own instance
 
 1. Deploy [`relay/Code.gs`](relay/Code.gs) on your Google account (script.google.com → paste → Deploy → Web app → Execute as **Me** → access **Anyone** → authorise).
 2. Fork this repo, put your `/exec` URL in the `BACKEND` constant in `index.html`, enable GitHub Pages.
 3. Share your Pages link — each person creates their own username + PIN.
+4. Optional but recommended: in the Apps Script editor, run `setupMonthlyBackup()` once to schedule the monthly backup email to yourself.
 
 Note: PIN auth is meant for casual personal use among people you'd share the link with, not adversarial security. All portfolios reside in the host's Drive, so the host account owner can technically read them. Prices come from Yahoo Finance's NSE feed and can lag the exchange by seconds to minutes; this is not a trading terminal.

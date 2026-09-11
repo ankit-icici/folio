@@ -134,7 +134,7 @@ function monthlyBackup(){
     if (!ff.f) { lines.push(names[i]+': no data file yet'); continue; }
     var txt = ff.f.getBlob().getDataAsString(), d = {};
     try { d = JSON.parse(txt); } catch(e){}
-    atts.push(Utilities.newBlob(txt, 'application/json', 'folio-'+names[i]+'-'+stamp+'.json'));
+    atts.push(Utilities.newBlob(txt, 'application/json', 'Folio-backup-'+names[i]+'-'+stamp+'.json'));
     lines.push(names[i]+': '+count_(d,'stocks')+' stocks, '+count_(d,'txns')+' transactions, '+
                count_(d,'mf','funds')+' funds, '+count_(d,'mf','txs')+' fund transactions, '+
                count_(d,'esops','grants')+' ESOP grants. Last saved '+(d.savedAt||'unknown')+'.');

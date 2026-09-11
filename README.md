@@ -52,7 +52,7 @@ lose shares and cost basis.
 
 Losing data should take deliberate effort, not a bad day:
 
-1. **Write guard** — the server refuses any save that would zero out an account's stocks or drop more than half its transactions, unless the client explicitly passes `force:true` (only the in-app restore flows do).
+1. **Write guard** — the server refuses any save that would empty **any** section of the document (stocks, transactions, funds, fund transactions, SIPs, SWPs, ESOP grants or lots) or halve a large one, and refuses to drop an imported history, unless the client explicitly passes `force:true` (only the in-app restore flows do). A bug in the app therefore cannot quietly erase a category.
 2. **Automatic snapshots** — before the first save of each day, the previous state is copied to a `Folio Backups` folder in the host's Drive: a **daily** restore point (kept 60 days) and a **monthly archive that is never deleted**.
 3. **In-app recovery** — ⚙ Account → *Go back to an earlier version* lists every snapshot in plain language and restores it in two taps. No files, no pasting.
 4. **Stale-tab protection** — a tab returning to the foreground re-syncs from the server before it can save, so an old tab can't overwrite newer data.

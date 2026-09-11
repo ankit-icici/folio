@@ -191,6 +191,13 @@ meta.mf = {
 
 ## Data durability (do not weaken)
 
+**Relay v15 write guard covers the WHOLE document**, not just stocks/txns: `shrunk_(old,inc)`
+refuses any save that empties a section (`stocks`, `txns`, `mf.funds`, `mf.txs`, `mf.sips`,
+`mf.swps`, `esops.grants`, `esops.lots`) or halves one that held >= 20 rows, and refuses to drop
+`history`. Only `force:true` (the in-app restore flows) may shrink a section. This closed a real
+hole: the v62 login bug left `meta.mf` unset in memory, and the old stocks-only guard would have
+happily written the funds away.
+
 1. Server rejects any save that zeroes out stocks or drops >50% of transactions
    (`suspicious_save`) unless the client passes `force:true` — only the Restore flows do.
 2. Before the first save each day, the previous state is snapshotted to the Drive folder

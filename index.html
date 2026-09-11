@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v69";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v70";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2534,6 +2534,25 @@ function snapLabel(key,keep){
   const t=days===0?"Today":(days===1?"Yesterday":d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}));
   return {t,s:days<=1?"":days+" days ago"};
 }
+/* A restore must bring back EVERY section. Restoring only stocks+txns and then
+   force-saving (which bypasses the write guard) would wipe funds, ESOPs and the
+   imported history - the backup file holds them, the restore used to drop them. */
+function applyDoc(d){
+  stocks=d.stocks||{}; txns=d.txns||{};
+  if(d.history) meta.history=d.history; else delete meta.history;
+  if(d.esops) meta.esops=d.esops; else delete meta.esops;
+  if(d.mf) meta.mf=d.mf; else delete meta.mf;
+}
+const nOf=(o,a,b)=>{let c=o&&o[a]; if(b) c=c&&c[b]; return c?Object.keys(c).length:0;};
+function docSummary(d){
+  return nOf(d,"stocks")+" stocks · "+nOf(d,"txns")+" transactions · "+
+         nOf(d,"mf","funds")+" funds · "+nOf(d,"mf","txs")+" fund transactions · "+
+         nOf(d,"esops","grants")+" ESOP grants"+(d.history?" · imported history":"")+
+         (d.savedAt?"<br>saved "+esc(String(d.savedAt).slice(0,16).replace("T"," "))+" UTC":"");
+}
+function isFolioDoc(d){
+  return !!(d&&typeof d==="object"&&(d.stocks||d.txns||d.mf||d.esops));
+}
 async function restoreSheet(){
   if(guestGuard()) return;
   openSheet("Earlier versions","<p class='hint' style='margin-top:4px'>Loading…</p>");
@@ -2559,8 +2578,9 @@ async function restoreSheet(){
     try{
       const j=await fetch(api("action=snapshot&day="+encodeURIComponent(b.dataset.key))).then(r=>r.json());
       if(j.error||!j.data) return showErr("#rsErr","Couldn’t load that version. Try another date.");
-      stocks=j.data.stocks||{}; txns=j.data.txns||{};
-      saveRemote(true); closeSheet();
+      if(!isFolioDoc(j.data)) return showErr("#rsErr","That version looks empty — try another date.");
+      applyDoc(j.data);
+      saveRemote(true); closeSheet(); setTab("home");
     }catch(e2){ showErr("#rsErr","Couldn’t reach your data right now."); }
   });
 }
@@ -2569,14 +2589,27 @@ function importBackupSheet(){
   openSheet("Use a saved copy",
     '<p class="hint" style="margin-top:4px">Open the file you saved earlier, copy everything in it, and paste it below.</p>'+
     '<div class="f"><label>Paste the file’s contents</label><textarea id="rTxt"></textarea></div>'+
+    '<div class="hint mono" id="rSum"></div>'+
     '<div class="err" id="rErr"></div>'+
-    '<button class="primary" id="rGo">Replace my portfolio with this</button>');
-  $("#rGo").addEventListener("click",()=>{
-    try{
-      const d=JSON.parse($("#rTxt").value);
-      if(!d.stocks||!d.txns) throw new Error("this doesn’t look like a Folio copy");
-      stocks=d.stocks; txns=d.txns; saveRemote(true); closeSheet();
-    }catch(e){ showErr("#rErr","Couldn’t read that — "+e.message+"."); }
+    '<button class="primary" id="rGo">Check this copy</button>');
+  let ready=null;
+  $("#rGo").addEventListener("click",e=>{
+    const b=e.currentTarget;
+    if(!ready){
+      let d;
+      try{ d=JSON.parse($("#rTxt").value); }
+      catch(err){ return showErr("#rErr","Couldn’t read that — "+err.message+"."); }
+      if(!isFolioDoc(d)) return showErr("#rErr","This doesn’t look like a Folio copy.");
+      ready=d;
+      $("#rErr").textContent="";
+      $("#rSum").innerHTML="<b>This copy holds</b><br>"+docSummary(d);
+      b.textContent="Replace everything with this copy";
+      return;
+    }
+    applyDoc(ready); saveRemote(true); closeSheet(); setTab("home");
+  });
+  $("#rTxt").addEventListener("input",()=>{
+    if(ready){ ready=null; $("#rSum").innerHTML=""; $("#rGo").textContent="Check this copy"; }
   });
 }
 function cfgSheet(){

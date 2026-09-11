@@ -426,7 +426,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v72";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v73";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -493,7 +493,10 @@ async function saveNow(force){
     if(j.error==="suspicious_save"){
       const st=$("#status");
       if(st){ st.style.display="block";
-        st.textContent="Save blocked: this would have replaced "+j.oldTx+" records with "+j.inTx+". Your server data is untouched — reload the app."; }
+        st.textContent=j.section
+          ? "Save blocked: this would have cut "+j.section+" from "+j.was+" to "+j.now+
+            ". Your saved data is untouched — reload the app."
+          : "Save blocked: this looked like it would erase data. Your saved data is untouched — reload the app."; }
     }
   }catch(e){ pendingSave=true; }
   renderHeroOnly();
@@ -2410,7 +2413,9 @@ function importSheet(){
       let sid=byName[r.name.toLowerCase()]||existing[r.name.toLowerCase()];
       if(!sid){ sid=uid(); byName[r.name.toLowerCase()]=sid;
         stocks[sid]={name:r.name,symbol:null,pool,price:r.price,prevClose:r.price,target:null,createdAt:Date.now()}; }
-      txns[uid()]={stockId:sid,side:"buy",qty:r.qty,price:r.price,date:r.date,seq:Date.now()+Math.random()};
+      /* keep:1 - pasted rows are hand-entered, so they must show in Flows even when
+         dated on or before history.end (the same rule as the Buy/Sell sheets) */
+      txns[uid()]={stockId:sid,side:"buy",qty:r.qty,price:r.price,date:r.date,seq:Date.now()+Math.random(),keep:1};
     }
     saveRemote(); closeSheet();
   });

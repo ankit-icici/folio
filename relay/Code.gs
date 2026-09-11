@@ -1,10 +1,8 @@
 /* ------------------------------------------------------------------------
-   Deployed web app is Version 15 (ping v:15). This file also carries the
-   monthly-backup functions that live in the project HEAD (ping would say
-   v:16): triggers run head code, the web app runs the pinned version, which
-   is why the backup could be added without touching the live app's scopes.
-   The Apps Script editor remains the source of truth - re-read it before
-   changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
+   Mirror of the deployed Apps Script, head revision (ping reports v:17).
+   The WEB APP is pinned to an older deployed version (ping v:15) on purpose -
+   see CLAUDE.md > Monthly off-Drive backup. Both are correct; the gap is the design.
+   The editor is the source of truth: re-read it before changing anything.
    ------------------------------------------------------------------------ */
 var FILE_PREFIX='nivesh-acc-';
 var BK_FOLDER='Folio Backups';
@@ -119,8 +117,17 @@ function shrunk_(old,inc){
    snapshots and the monthly archive all sit in this Drive. One email a month
    with the JSON attached puts a copy outside that single point of failure.
    Run setupMonthlyBackup() once from the editor to install the trigger. */
-var BACKUP_USERS = 'ankit';        // comma-separated usernames to back up
+/* Whose files the monthly backup includes. Kept OUT of the code: the repo copy of this
+   file is public, and a username is half of a login. The real list lives in the script
+   property `backup_users` (set once by setupMonthlyBackup, editable under Project
+   Settings -> Script Properties). Leave this empty. */
+var BACKUP_USERS = '';
 
+function whoIsBackedUp(){            /* read-only check: who the monthly email covers */
+  var who = props_().getProperty('backup_users') || '(nothing configured)';
+  Logger.log('backup_users = ' + who);
+  return who;
+}
 function monthlyBackup(){
   var names = String(props_().getProperty('backup_users')||BACKUP_USERS)
                 .split(',').map(function(s){return s.trim();}).filter(String);
@@ -139,7 +146,15 @@ function monthlyBackup(){
                count_(d,'mf','funds')+' funds, '+count_(d,'mf','txs')+' fund transactions, '+
                count_(d,'esops','grants')+' ESOP grants. Last saved '+(d.savedAt||'unknown')+'.');
   }
-  if (!atts.length) return 'nothing to back up';
+  if (!atts.length) {                 /* fail loudly: silence must never look like success */
+    MailApp.sendEmail({to: to,
+      subject: 'Folio backup DID NOT RUN - needs one setting',
+      body: 'The monthly Folio backup ran but had nothing to send, so no copy of your\n'+
+            'portfolio was made this month.\n\nFix: open the Apps Script project, Project\n'+
+            'Settings -> Script Properties, and set `backup_users` to your Folio username\n'+
+            '(then run setupMonthlyBackup once). Until then this warning repeats monthly.'});
+    return 'nothing to back up - owner warned';
+  }
   MailApp.sendEmail({
     to: to,
     subject: 'Folio backup - '+Utilities.formatDate(new Date(),'Asia/Kolkata','MMMM yyyy'),
@@ -166,7 +181,7 @@ function setupMonthlyBackup(){
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:16});
+  if(p.action==='ping') return json_({ok:true,v:17});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});

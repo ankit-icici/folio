@@ -27,11 +27,31 @@ anything — the operational gotchas below have all bitten before.
 |---|---|
 | App | https://ankit-icici.github.io/folio/ (GitHub Pages, `main` branch, root) |
 | Repo | https://github.com/ankit-icici/folio (public — code only, **never** portfolio data) |
-| Backend | Google Apps Script web app on the owner's Google account (`alliances.ankit@gmail.com`) |
+| Backend | Google Apps Script web app on the owner's own Google account (ask the owner; not recorded here) |
 | Apps Script project | **"Folio backend (portfolio app)"** — `https://script.google.com/home/projects/1CpID_Y5jaqO31kbsUSqOEFVgaNPjilXJV1xxO15piummuwCAKSPB-njp/edit` |
 
 The backend `/exec` URL is hardcoded as `BACKEND` at the top of the `<script>` in `index.html`.
 `relay/Code.gs` is the deployed backend source, kept in sync by hand.
+
+### Starter prompt (what to paste into a fresh session)
+
+> Work on my stock portfolio PWA: https://github.com/ankit-icici/folio — clone it and read
+> CLAUDE.md first, starting with the "Start here" block. The live app is
+> https://ankit-icici.github.io/folio/ and my data lives in my own Google Drive behind an Apps
+> Script backend — that backend is edited in the Apps Script browser editor, not from the repo.
+> I'm signed into that Google account in Chrome along with my broker portals, so use my browser
+> for anything needing a login and ask me to sign in rather than asking for credentials. Verify
+> changes against my real data in the live app before telling me they work. [then the request]
+
+Anything the owner must decide is under *Open decisions / backlog*. Ask; do not guess.
+
+## Legacy name: "nivesh"
+
+The app was called **nivesh** before it was Folio, and that name still keys everything that
+persists, so grepping for "folio" finds none of it: Drive files `nivesh-acc-<hash16>.json`
+(`FILE_PREFIX`), and localStorage `nivesh_auth`, `nivesh_cache_<user>`, `nivesh_mask`,
+`nivesh_theme`, `nivesh_recent_<user>`. Renaming any of them orphans live data or signs
+everyone out - leave them alone.
 
 ## Files
 
@@ -57,13 +77,19 @@ never reaches Claude — if a task needs a signed-in app, ask the user to sign i
 Backend actions (`?u=<username>&p=<pin>` on every authed call):
 
 - `GET action=ping` → `{ok, v}` (version probe, no auth)
-- `GET action=load` → `{data:{stocks,txns}}`
+- `GET action=login` → `{ok, u, guest}` (credential check only)
+- `GET action=search&q=…` → `{results:[{s,n,x}]}` company lookup for the add-stock typeahead
+- `GET action=load` → `{data:<the whole document>, t, quotes?, guest?}` - that is `stocks`,
+  `txns`, `history`, `esops`, `mf`, `savedAt`, not just stocks/txns. Pass `&symbols=A,B` to get
+  prices in the same round trip. A guest reply has `guest:true` and is missing `esops` and every
+  private fund.
 - `GET action=quotes&symbols=A,B` → live NSE prices, server-cached 45 s
 - `GET action=snapshots` / `GET action=snapshot&day=YYYY-MM-DD|YYYY-MM` → restore points
 - `POST {action:'register'}` / `{action:'save', data, force?}` / `{action:'unregister'}`
 - `POST {action:'setguest', gp}` — set/revoke the account's view-only advisor PIN (empty `gp` revokes)
 
-Deployed relay is **Version 14 / ping `v:14`**. A *guest* (advisor-PIN) session may read
+The relay's **web app** is pinned to **Version 15** (`?action=ping` -> `v:15`); the project
+**head** is newer (`v:17`) because triggers run head - see *Monthly off-Drive backup*. A *guest* (advisor-PIN) session may read
 `load`, `search` and `quotes` only; `snapshots`/`snapshot` and every POST return `forbidden`,
 and its `load` has `esops` plus every `priv` fund (with their sips/swps/txs) deleted server-side.
 
@@ -126,7 +152,7 @@ one place that computes it (core invested + the cash box + any single-stock matc
 - `planDilute` — fresh money into the *other* holdings that brings an over-weight name down to
   target with no sale. Shown per row as "or +Rs X in others".
 
-### Flows periods
+### Flows periods (note: the `planBand` rule below belongs to Plan, not Flows)
 
 `flowWindow()` resolves every period to an inclusive `[from, to]` pair — there is no rolling
 cutoff any more. Financial years run 1 April to 31 March (`fyStart()` / `fyLabel()` roll over
@@ -236,7 +262,10 @@ happily written the funds away.
 **Installed and live since 2026-09-11** (Triggers page shows one time-based trigger on `monthlyBackup`,
 running against Head). The Apps Script project is named **"Folio backend (portfolio app)"**.
 (`setupMonthlyBackup()` installs or reinstalls the trigger; `backup_users` script property, default
-`BACKUP_USERS='ankit'`, chooses whose file goes). It exists because the live file, the daily
+the `backup_users` script property names the account - the code constant is deliberately empty
+so a public repo never carries half a login, `whoIsBackedUp()` prints what is configured, and a
+run with nothing configured emails the owner a warning instead of failing silently). It exists
+because the live file, the daily
 snapshots and the monthly archive all sit in one Google account - the email is the copy that
 survives losing it.
 
@@ -267,8 +296,13 @@ and then `saveRemote(true)`. That is `force:true`, which **bypasses the write gu
 restore silently wiped funds, ESOPs and the imported history, the exact data the backup was
 holding. v70 routes both through `applyDoc(d)`, which sets every section (and clears one the
 document genuinely lacks), and shows `docSummary(d)` for confirmation before overwriting.
-If you ever add a new top-level section to the document, add it to `applyDoc`, to `saveNow`'s
-payload and to the relay's `shrunk_` guard - all three, or it will not survive a restore.
+**Adding a new top-level section is a seven-place change.** Miss one and it silently fails to
+save, fails to restore, or gets wiped: `liveDoc()` (what leaves the app - saves AND the device
+export read it), `applyDoc()` (restore), `docSummary()` (the preview), `docLosses()` (the
+"this removes..." warning), `isFolioDoc()` (paste validation), `cacheLocal()` (it stores whole
+`meta`, so `meta.x` is automatic but a NEW top-level key outside `meta` is not), and the relay's
+`shrunk_` guard. Note the naming asymmetry: in memory these live as `stocks`, `txns` and
+`meta.history` / `meta.esops` / `meta.mf`, but in the document they are all top-level.
 
 ## Release process
 
@@ -301,6 +335,10 @@ account; drive it with the Chrome tools):
 
 ### Verifying against real data
 
+(Do not trust a blanket claim that the Apps Script `/exec` is unreachable from a sandbox - it
+has been reached successfully with plain `curl`. Try `?action=ping` first; only fall back to the
+browser if it actually fails.)
+
 Never ask for the PIN. Ask the user to sign in in their browser, then run checks through that
 signed-in page (`api()`, `stocks`, `txns` are all in scope), e.g.
 `await fetch(api('action=snapshots')).then(r=>r.json())`.
@@ -327,7 +365,8 @@ decimals — that is how the "private funds move no total and no return" rule wa
 - Sorting default is **current value**, not invested amount.
 - Flows are shown from the user's pocket's perspective: buys negative, sells positive/green.
 - **Never count a sell whose matching buy isn't in the data** — it reads as free income and
-  inflates the return. This produced a wrong CAGR once (26.9% vs the true 20.2% at the time).
+  inflates the return. This produced a materially wrong CAGR once - several points above
+  the truth - and it looked plausible, which is why it went unnoticed.
   Either import both sides, or exclude the record from the return calculation.
 - Broker exports are dirty: Groww emits **₹0 "SELL" rows for off-market transfers** between the
   owner's own accounts (drop them — internal moves, not trades) and for rights/bonus
@@ -357,14 +396,15 @@ Regular-plan fund data comes from the advisor's portal, `ifaplanet.com` ->
 `get_family_report_detail.php` (the owner signs in himself). Quirks that cost real time:
 
 - The SWP table renders **empty until "Show All SWPs" is clicked**; same pattern for SIPs/STPs.
-- The SIP register **double-lists** a fund held under two folios, and inflates the monthly total
-  (₹60,000 shown vs ₹30,000 real for Helios). Cross-check against the fund's invested amount.
+- The SIP register **double-lists** a fund held under two folios, so the monthly total it
+  shows can be double the real one. Cross-check each registration against that fund's invested amount.
 - Rows labelled "Systematic (Electronic credit)" on SBI Balanced Advantage are **SWP payouts
   arriving**, not SIPs. In the app they are modelled as an SWP with a `to` destination.
 - The family layout repeats HUF rows; dedupe before importing.
-- Its portfolio CAGR (11.27%) is an average-holding-period shortcut, not XIRR; the app's ~10.8%
-  money-weighted figure is the defensible one and was verified offline. Same underlying data -
-  absolute return matches exactly.
+- Its portfolio "CAGR" is an average-holding-period shortcut, not XIRR, so it reads higher than
+  the app's money-weighted figure. The app's was verified offline against the same flows and the
+  absolute return matches exactly - the tell that the data agrees and only the method differs.
+  Do not "fix" the app to match a portal's number.
 
 ### Importing a broker's history
 
@@ -372,7 +412,8 @@ Read the broker's own **order/transaction ledger** before modelling anything. Do
 reconstruct a history by fitting NAV series to current units: current units only reflect what
 survived, so any past redemption is invisible to the fit. That mistake put a 5.8-year SIP
 (69 instalments, ₹2.11 L in, four redemptions, ₹2.05 L out) into the app as 19 instalments with
-no redemptions, turning a genuine **+17.5 %** lifetime XIRR into **-1.8 %**.
+no redemptions - turning a solidly positive lifetime XIRR into a small negative one, because
+the money already taken out had vanished from the picture.
 
 Groww specifics: the ledger is **All orders → Mutual Funds** (`/user/order/mutual-funds`), and
 it **lazy-loads** — scroll until `document.body.scrollHeight` stops growing, else you silently
@@ -402,17 +443,28 @@ and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-f
 - Relay v12: guests KEEP `search` and `quotes` (public market data) - only `snapshots`/`snapshot` and every POST are owner-only. v11 gated all of doGet after `load`, which silently killed stock search in the advisor view (client showed "Nothing found").
 - App: `AUTH.g` set at login from the reply; `isGuest()` hides the ESOP tab and the + button, no-ops saveRemote/saveNow, slims the Account sheet. The advisor logs in with the SAME username + the advisor PIN at the same URL.
 
-## What is in the live account (context, not instructions)
+## What is in the live account (shape only - no figures in a public repo)
 
-- Stocks: ~19 holdings incl. Satellite/IPO ones; ICICI Bank shares are ESOP-only and never in `stocks{}`.
-- Funds: 8 counted personal funds, 1 HUF fund (ICICI Pru Ultra Short), 1 closed fund
-  (Mirae Asset Large Cap Regular, exited — kept at `units:0` so its flows still count), and
-  1 **private** fund (Parag Parikh Flexi Cap Direct, Groww) with its real 73-row ledger:
-  69 SIPs from Dec 2020 (₹5,000 → ₹2,500 → ₹3,000) and 4 redemptions totalling ₹2,05,000.
-  Its lifetime XIRR is ~17.5 %; Groww's own screens show 15.45 % (fund row) and 20.31 %
-  (portfolio tile) under conventions that could not be reproduced from the order data.
-- **Not imported** (offered, user has not decided): three other Groww funds exited 2021–23 —
-  SBI Focused Direct (₹30,000 in → ₹46,530 out), Mirae Large Cap Direct (₹30,000 → ₹45,062),
-  Mirae Large & Midcap Direct (₹15,000 → ₹24,061). Adding them as closed private funds would
-  complete the Groww side; they would not touch any aggregate, since private funds never do.
-- Advisor access: no advisor PIN is currently set (test PINs were created and revoked).
+Ask the owner for current numbers; this is only so you know what exists:
+
+- **Stocks**: a couple of dozen holdings across Core and Satellite. The employer's own shares are
+  ESOP-only and never appear in `stocks{}`.
+- **Funds**: several counted personal funds, one HUF-held fund (excluded from every aggregate),
+  one fully-redeemed fund kept at `units:0` so its flows still count, and one **private** fund
+  (self-managed, held at a different broker) that is outside every total on both sides.
+- **ESOPs**: a handful of grants with their exercised lots; perquisite amounts are the actual
+  per-lot figures from the owner's sheet (a mix of rates), not a flat rate.
+- **Imported history**: a multi-account broker ledger ending at `history.end`, which is why
+  hand-entered trades need `keep:1`.
+- **Advisor access**: no advisor PIN is set at present. Setting one is the owner's call.
+
+### Open decisions / backlog
+
+1. **Three exited funds at the self-managed broker are not imported** (the owner was offered
+   this and has not decided). They would join as closed private funds and, being private, would
+   move no dashboard figure - only the Closed group and their own per-fund CAGR.
+2. **Git history still contains data that the current files no longer do** - earlier commits of
+   this file carried real holdings, amounts, the owner's email and username. Scrubbing HEAD does
+   not remove them from a public repo's history. Rewriting history (filter-repo + force-push) is
+   the owner's decision; flag it, do not do it unasked.
+3. Nothing else is half-built. If a feature looks unfinished, ask before assuming.

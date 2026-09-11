@@ -410,7 +410,11 @@ const api=q=>BACKEND+"?u="+encodeURIComponent(AUTH.u)+"&p="+encodeURIComponent(A
 const isGuest=()=>!!(AUTH&&AUTH.g);   /* advisor key: view-only, esops never sent to this device */
 const ERRS={unauthorized:"Wrong username or PIN.",locked:"Too many attempts — try again in a few minutes.",
   username_taken:"That username is taken.",bad_username:"Username: 3–20 letters, digits, - or _.",
-  pin_too_short:"PIN must be at least 4 characters."};
+  pin_too_short:"PIN must be at least 4 characters.",
+  same_pin:"That is already your PIN.",
+  same_as_advisor:"That is your advisor's PIN — pick a different one.",
+  same_as_owner:"That is your own PIN — pick a different one for your advisor.",
+  forbidden:"This login can only look, not change."};
 const errMsg=c=>ERRS[c]||("Error: "+c);
 let stocks={}, txns={}, meta={}, ready=false, live=false, sheetOpen=false;
 let sync="init", failCount=0, lastQuotes=null;   /* init | live | off */
@@ -426,7 +430,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v73";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v74";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2651,6 +2655,35 @@ function importBackupSheet(){
     if(ready){ ready=null; $("#rSum").innerHTML=""; $("#rGo").textContent="Check this copy"; }
   });
 }
+/* Changing the PIN renames the Drive file and every snapshot server-side, because
+   both are named from sha(username + PIN). The app then keeps the new PIN locally. */
+function pinSheet(){
+  if(guestGuard()) return;
+  openSheet("Change my PIN",
+    '<p class="hint" style="margin-top:4px">Your PIN is the only secret protecting this account. Changing it here updates your saved data and every restore point in one step — nothing to move by hand.</p>'+
+    '<div class="f2"><div class="f"><label>New PIN</label><input id="pA" class="mono" type="password" inputmode="numeric" autocomplete="new-password"></div>'+
+    '<div class="f"><label>Type it again</label><input id="pB" class="mono" type="password" inputmode="numeric" autocomplete="new-password"></div></div>'+
+    '<div class="err" id="pErr"></div>'+
+    '<button class="primary" id="pGo">Change my PIN</button>'+
+    '<p class="hint" style="margin-top:10px">Other devices signed in with the old PIN will be asked to sign in again. Your advisor\u2019s PIN is separate and keeps working.</p>');
+  $("#pGo").addEventListener("click",async e=>{
+    const b=e.currentTarget, a=$("#pA").value.trim(), c=$("#pB").value.trim();
+    if(a.length<4) return showErr("#pErr","Use at least 4 characters.");
+    if(a!==c) return showErr("#pErr","The two PINs don\u2019t match.");
+    b.disabled=true; b.textContent="Changing…";
+    try{
+      const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
+        body:JSON.stringify({action:"setpin",np:a})});
+      const j=await r.json();
+      if(j.error) throw new Error(errMsg(j.error));
+      AUTH.p=a; try{localStorage.setItem("nivesh_auth",JSON.stringify(AUTH));}catch(x){}
+      closeSheet();
+      const st=$("#status");
+      if(st){ st.style.display="block"; st.textContent="PIN changed. Your data and "+(j.snapshotsMoved||0)+" restore points moved with it."; setTimeout(()=>{st.style.display="none";},6000); }
+      loadRemote().then(render);
+    }catch(err){ b.disabled=false; b.textContent="Change my PIN"; showErr("#pErr",err.message); }
+  });
+}
 function cfgSheet(){
   if(isGuest()){
     openSheet("Account",
@@ -2663,6 +2696,9 @@ function cfgSheet(){
   openSheet("Account",
     '<p class="hint" style="margin-top:4px">Signed in as <b style="color:var(--ink)">'+esc(AUTH.u)+'</b>. Everything you change is saved automatically.</p>'+
     '<button class="primary" id="sOut">Sign out</button>'+
+    '<div class="secthead">Security</div>'+
+    '<button class="ghost" id="sPin">Change my PIN</button>'+
+    '<p class="hint" style="margin-top:6px">Moves your data and every restore point to the new PIN automatically.</p>'+
     '<div class="secthead">If something goes wrong</div>'+
     '<button class="ghost" id="sHist">Go back to an earlier version</button>'+
     '<p class="hint" style="margin-top:6px">Every day’s version is kept, plus one for every month — forever.</p>'+
@@ -2672,12 +2708,13 @@ function cfgSheet(){
     '<div class="f"><label>Advisor PIN — view-only, ESOPs stay hidden</label><input id="gPin" class="mono" inputmode="numeric" autocomplete="off" placeholder="4+ digits, not your own PIN"></div>'+
     '<div class="acts"><button id="gSet">Set / change</button><button id="gOff">Revoke access</button></div>'+
     '<div class="err" id="gErr"></div>'+
-    '<p class="hint" id="gMsg" style="margin-top:6px">Share the app link, your username and that PIN. Your advisor sees stocks and funds only, and cannot change or save anything. Revoke any time.</p>'+
+    '<p class="hint" id="gMsg" style="margin-top:6px">Share the app link, your username and that PIN. Your advisor sees stocks and funds only, and cannot change or save anything. Setting a new PIN here replaces the old one immediately — which is how you hand over to a different advisor — and Revoke ends all advisor access.</p>'+
     '<div class="secthead">Danger</div>'+
     '<button class="ghost" id="sDel" style="color:var(--loss);border-color:var(--loss)">Delete my account and data</button>'+
     '<div class="err" id="sErr"></div>'+
     '<p class="hint" style="margin-top:16px;text-align:center">Build <span class="mono">'+BUILD+'</span></p>');
   $("#sOut").addEventListener("click",signOut);
+  $("#sPin").addEventListener("click",pinSheet);
   const gCall=async gp=>{
     const r=await fetch(api(""),{method:"POST",headers:{"Content-Type":"text/plain"},
       body:JSON.stringify({action:"setguest",gp:gp})});

@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
-   Mirror of the deployed Apps Script, head revision (ping reports v:17).
-   The WEB APP is pinned to an older deployed version (ping v:15) on purpose -
-   see CLAUDE.md > Monthly off-Drive backup. Both are correct; the gap is the design.
+   Mirror of the deployed Apps Script. The web app now serves this code
+   (Apps Script deployment "Version 16"; its own `?action=ping` reports v:18 -
+   the two counters are unrelated, do not try to make them match).
    The editor is the source of truth: re-read it before changing anything.
    ------------------------------------------------------------------------ */
 var FILE_PREFIX='nivesh-acc-';
@@ -181,7 +181,7 @@ function setupMonthlyBackup(){
 
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:17});
+  if(p.action==='ping') return json_({ok:true,v:18});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
@@ -280,6 +280,28 @@ function doPost(e){
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(a.guest) return json_({error:'forbidden'});  // every write is owner-only
+  if(body.action==='setpin'){          /* owner changes their own PIN */
+    var np=String(body.np||'');
+    if(np.length<4) return json_({error:'pin_too_short'});
+    var nh=sha_(a.u+':'+np);
+    if(nh===props_().getProperty('u:'+a.u)) return json_({error:'same_pin'});
+    if(nh===props_().getProperty('g:'+a.u)) return json_({error:'same_as_advisor'});
+    /* the data file and every snapshot are NAMED from the hash of user+pin, so they
+       must be renamed in step or the account wakes up empty with its history orphaned */
+    var ffp=fileFor_(a.h);
+    if(ffp.f) ffp.f.setName(FILE_PREFIX+nh.slice(0,16)+'.json');
+    var moved=0;
+    try{
+      var fo=bkFolder_(), it=fo.getFiles(), op=a.h.slice(0,8), npfx=nh.slice(0,8);
+      while(it.hasNext()){
+        var g=it.next(), n=g.getName();
+        if(n.indexOf('snap-'+op+'-')===0){ g.setName('snap-'+npfx+'-'+n.slice(6+op.length)); moved++; }
+        else if(n.indexOf('keep-'+op+'-')===0){ g.setName('keep-'+npfx+'-'+n.slice(6+op.length)); moved++; }
+      }
+    }catch(e4){}
+    props_().setProperty('u:'+a.u, nh);
+    return json_({ok:true, snapshotsMoved:moved});
+  }
   if(body.action==='setguest'){
     var gp=String(body.gp||'');
     if(!gp){ props_().deleteProperty('g:'+a.u); return json_({ok:true,guest:false}); }

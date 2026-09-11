@@ -209,8 +209,10 @@ happily written the funds away.
 
 ### Monthly off-Drive backup
 
-`monthlyBackup()` emails the account JSON to the script owner on the 1st of each month
-(`setupMonthlyBackup()` installs the trigger; `backup_users` script property, default
+`monthlyBackup()` emails the account JSON to the script owner on the 1st of each month.
+**Installed and live since 2026-09-11** (Triggers page shows one time-based trigger on `monthlyBackup`,
+running against Head). The Apps Script project is named **"Folio backend (portfolio app)"**.
+(`setupMonthlyBackup()` installs or reinstalls the trigger; `backup_users` script property, default
 `BACKUP_USERS='ankit'`, chooses whose file goes). It exists because the live file, the daily
 snapshots and the monthly archive all sit in one Google account - the email is the copy that
 survives losing it.

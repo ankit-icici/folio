@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------
-   Synced with the deployed script (Version 14, ping v:14) on 2026-09-10.
+   Synced with the deployed script (Version 15, ping v:15) on 2026-09-11.
    The Apps Script editor remains the source of truth - re-read it before
    changing anything; see CLAUDE.md > Relay for the project id and deploy steps.
    ------------------------------------------------------------------------ */
@@ -92,9 +92,27 @@ function quotes_(csv){
   return out;
 }
 
+/* Nothing may quietly vanish. Every section of the document is guarded, not just
+   stocks/txns: a save that empties a section, or halves a big one, is refused unless
+   the client explicitly forces it (only the in-app restore flows do). Learned the hard
+   way - a login path that forgot to load `mf` could have written the funds away with
+   the old stocks-only guard waving it through. */
+function count_(o,a,b){ var c=o&&o[a]; if(b) c=c&&c[b]; return c?Object.keys(c).length:0; }
+function shrunk_(old,inc){
+  var S=[['stocks',['stocks']],['txns',['txns']],['mf.funds',['mf','funds']],
+         ['mf.txs',['mf','txs']],['mf.sips',['mf','sips']],['mf.swps',['mf','swps']],
+         ['esops.grants',['esops','grants']],['esops.lots',['esops','lots']]];
+  for(var i=0;i<S.length;i++){
+    var p=S[i][1], o=count_(old,p[0],p[1]), n=count_(inc,p[0],p[1]);
+    if(o>0&&n===0) return {k:S[i][0],o:o,n:n};
+    if(o>=20&&n<o*0.5) return {k:S[i][0],o:o,n:n};
+  }
+  if(old.history&&!inc.history) return {k:'history',o:1,n:0};
+  return null;
+}
 function doGet(e){
   var p=(e&&e.parameter)||{};
-  if(p.action==='ping') return json_({ok:true,v:14});
+  if(p.action==='ping') return json_({ok:true,v:15});
   var a=auth_(p);
   if(a.err) return json_({error:a.err});
   if(p.action==='login') return json_({ok:true,u:a.u,guest:!!a.guest});
@@ -205,13 +223,11 @@ function doPost(e){
   if(body.action==='save'){
     var ff=fileFor_(a.h);
     var inc=body.data||{};
-    var inTx=Object.keys(inc.txns||{}).length, inSt=Object.keys(inc.stocks||{}).length;
     if(ff.f&&body.force!==true){
       try{
         var old=JSON.parse(ff.f.getBlob().getDataAsString());
-        var oldTx=Object.keys(old.txns||{}).length, oldSt=Object.keys(old.stocks||{}).length;
-        if((oldSt>0&&inSt===0)||(oldTx>=20&&inTx<oldTx*0.5))
-          return json_({error:'suspicious_save',oldTx:oldTx,inTx:inTx,oldSt:oldSt,inSt:inSt});
+        var bad=shrunk_(old,inc);
+        if(bad) return json_({error:'suspicious_save',section:bad.k,was:bad.o,now:bad.n});
       }catch(e2){}
     }
     var s=JSON.stringify(inc);

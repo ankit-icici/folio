@@ -207,6 +207,20 @@ happily written the funds away.
    overwrite newer data.
 4. ⚙ Account → Restore points browses and restores any snapshot in-app.
 
+### Monthly off-Drive backup
+
+`monthlyBackup()` emails the account JSON to the script owner on the 1st of each month
+(`setupMonthlyBackup()` installs the trigger; `backup_users` script property, default
+`BACKUP_USERS='ankit'`, chooses whose file goes). It exists because the live file, the daily
+snapshots and the monthly archive all sit in one Google account - the email is the copy that
+survives losing it.
+
+**Scope trap:** these functions need Mail + Trigger scopes the relay never had. Time-driven
+triggers run the project **head**, while the web app runs its **pinned deployed version** - so
+the backup was added to head and the web app deliberately left on the older version. Redeploying
+the web app from head would make the live app demand the new scopes; only do that after the
+owner has authorised them, and never mid-market-day.
+
 ## Release process
 
 ```bash

@@ -86,10 +86,18 @@ Backend actions (`?u=<username>&p=<pin>` on every authed call):
 - `GET action=quotes&symbols=A,B` → live NSE prices, server-cached 45 s
 - `GET action=snapshots` / `GET action=snapshot&day=YYYY-MM-DD|YYYY-MM` → restore points
 - `POST {action:'register'}` / `{action:'save', data, force?}` / `{action:'unregister'}`
-- `POST {action:'setguest', gp}` — set/revoke the account's view-only advisor PIN (empty `gp` revokes)
+- `POST {action:'setguest', gp}` — set/revoke the account's view-only advisor PIN (empty `gp` revokes).
+  Setting a new one replaces the old instantly, which is the advisor hand-over path.
+- `POST {action:'setpin', np}` — owner changes their own PIN. **This renames things**: the data
+  file and every `snap-`/`keep-` snapshot are named from `sha(user:pin)`, so all of them are
+  renamed in the same call. Miss that and the account opens empty with its history orphaned.
+  Refused if the new PIN equals the current one or the advisor's. The advisor PIN is unaffected
+  (guests resolve through the owner's stored hash, which is updated in step)
 
-The relay's **web app** is pinned to **Version 15** (`?action=ping` -> `v:15`); the project
-**head** is newer (`v:17`) because triggers run head - see *Monthly off-Drive backup*. A *guest* (advisor-PIN) session may read
+The web app now serves the same code as head (Apps Script deployment **"Version 16"**, whose
+`?action=ping` answers **v:18** - two unrelated counters; do not try to align them). The
+head-vs-deployed split described under *Monthly off-Drive backup* is therefore closed: deploying
+head was safe because the owner's authorisation already covered the Mail and Trigger scopes. A *guest* (advisor-PIN) session may read
 `load`, `search` and `quotes` only; `snapshots`/`snapshot` and every POST return `forbidden`,
 and its `load` has `esops` plus every `priv` fund (with their sips/swps/txs) deleted server-side.
 
@@ -282,6 +290,15 @@ listed on the Triggers page, `monthlyBackup()` was run once, the mail arrived, a
 was downloaded and checked. Its SHA-256 equalled the stored document's byte for byte (86,004 B),
 and feeding that file alone to the deployed app's `applyDoc()` from an empty state rebuilt every
 section and re-serialised identically. Re-run that proof after any change to the document shape.
+
+### Changing a PIN
+
+Owner: ⚙ Account -> *Change my PIN* (`pinSheet()` -> `setpin`). The client updates `AUTH.p` and
+localStorage on success; other devices on the old PIN drop to the sign-in screen (`authGone`).
+Advisor: ⚙ Account -> *Advisor access* -> set a new PIN (replaces the old immediately) or
+*Revoke access*. Verified end to end on a throwaway account: old PIN rejected, new PIN works,
+data and snapshots intact under the new PIN, advisor unaffected by an owner PIN change, old
+advisor locked out the moment a new advisor PIN is set, and revoke locks out everyone.
 
 ### Backup file naming
 

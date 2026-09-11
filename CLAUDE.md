@@ -4,6 +4,23 @@ Personal stock-portfolio PWA (India/NSE). Vanilla JS, **no build step, no framew
 dependencies**. Everything the app does is in `index.html`. Read this file before changing
 anything — the operational gotchas below have all bitten before.
 
+## Start here (first session on this project)
+
+1. **Two version strings move together.** Every app change bumps `BUILD` in `index.html` **and**
+   `CACHE` in `sw.js` to the same `vN`. Skip one and the user never sees the change.
+2. **The backend is not built from this repo.** `relay/Code.gs` is a *copy*. The deployed script
+   is edited in the Apps Script browser editor, then Deploy -> Manage deployments -> pencil ->
+   New version. Read the live editor content before changing it, and write the copy back here
+   afterwards. Verify with `?action=ping`.
+3. **Never ask for the PIN**, and never type one. Ask the user to sign in in their own browser,
+   then drive checks through that signed-in page.
+4. **Verify on the live app before saying it works.** The user has been burned repeatedly by
+   "done" claims that were only true in the source. Load the deployed build, exercise the actual
+   path, and compare real numbers. For data-safety claims, prove the invariant (see *Verifying
+   against real data*).
+5. **This repo is public and holds code only.** Portfolio data lives solely in the owner's Drive.
+   Never commit a document, an export, a PIN or a screenshot of holdings.
+
 ## Live URLs
 
 | Thing | Where |
@@ -259,9 +276,14 @@ payload and to the relay's `shrunk_` guard - all three, or it will not survive a
 # 1. edit index.html
 # 2. bump BOTH: CACHE in sw.js and BUILD in index.html (folio-vN -> folio-vN+1)
 git add -A && git commit -m "..." && git push
-# 3. Pages goes live ~45 s later; verify with a grep for something new:
-curl -s https://ankit-icici.github.io/folio/ | grep -c '<new marker>'
+# 3. Pages usually serves in 1-2 min, but has taken 30-40+ min; queued builds then flush
+#    together. Do not assume a failure - poll until BUILD flips, e.g.:
+until curl -s https://ankit-icici.github.io/folio/index.html | grep -q 'BUILD="vN"'; do sleep 30; done
+# (gh api repos/ankit-icici/folio/pages/builds/latest --jq .status shows building/built)
 ```
+
+An installed PWA only re-checks `sw.js` on launch/foreground/10 min, so after a release ask the
+user to foreground the app; `BUILD` at the foot of the Account sheet tells you what they are on.
 
 ### Changing the backend
 
@@ -328,6 +350,21 @@ decimals — that is how the "private funds move no total and no return" rule wa
   `esops()` returns an explicit object, so a field it doesn't list is written and then ignored.
 - Mobile first: transaction rows are two lines (name + chip, then date · qty × price) with the
   amount on the right. Five-column table layouts truncate names to "He…" on a phone.
+
+### ifaplanet (the advisor's mutual-fund portal)
+
+Regular-plan fund data comes from the advisor's portal, `ifaplanet.com` ->
+`get_family_report_detail.php` (the owner signs in himself). Quirks that cost real time:
+
+- The SWP table renders **empty until "Show All SWPs" is clicked**; same pattern for SIPs/STPs.
+- The SIP register **double-lists** a fund held under two folios, and inflates the monthly total
+  (₹60,000 shown vs ₹30,000 real for Helios). Cross-check against the fund's invested amount.
+- Rows labelled "Systematic (Electronic credit)" on SBI Balanced Advantage are **SWP payouts
+  arriving**, not SIPs. In the app they are modelled as an SWP with a `to` destination.
+- The family layout repeats HUF rows; dedupe before importing.
+- Its portfolio CAGR (11.27%) is an average-holding-period shortcut, not XIRR; the app's ~10.8%
+  money-weighted figure is the defensible one and was verified offline. Same underlying data -
+  absolute return matches exactly.
 
 ### Importing a broker's history
 

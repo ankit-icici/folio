@@ -221,6 +221,16 @@ the backup was added to head and the web app deliberately left on the older vers
 the web app from head would make the live app demand the new scopes; only do that after the
 owner has authorised them, and never mid-market-day.
 
+### Restores must apply the WHOLE document
+
+Both restore paths (server snapshot and pasted file) used to do `stocks=d.stocks; txns=d.txns`
+and then `saveRemote(true)`. That is `force:true`, which **bypasses the write guard** - so a
+restore silently wiped funds, ESOPs and the imported history, the exact data the backup was
+holding. v70 routes both through `applyDoc(d)`, which sets every section (and clears one the
+document genuinely lacks), and shows `docSummary(d)` for confirmation before overwriting.
+If you ever add a new top-level section to the document, add it to `applyDoc`, to `saveNow`'s
+payload and to the relay's `shrunk_` guard - all three, or it will not survive a restore.
+
 ## Release process
 
 ```bash

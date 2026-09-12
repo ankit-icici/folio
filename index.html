@@ -330,10 +330,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px}
 .empty b{display:block;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;color:var(--ink);font-size:20px;margin-bottom:6px}
 .status{margin:10px 0 0;padding:10px 14px;border-radius:12px;background:var(--gold-soft);color:var(--gold);font-size:13px;font-weight:500;display:none}
-.nudge{margin:10px 0 0;padding:11px 14px;border-radius:12px;background:var(--gold-soft);color:var(--gold);font-size:13px;font-weight:500;display:none;align-items:center;gap:12px}
+.nudge{margin:10px 0 0;padding:11px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:500;display:none;align-items:center;gap:12px}
 .nudge.on{display:flex}
+.nudge.due{background:var(--gold-soft);border-color:transparent;color:var(--gold);font-size:13px}
 .nudge span{flex:1 1 auto;line-height:1.35}
-.nudge button{flex:0 0 auto;background:var(--gold);color:var(--bg);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;white-space:nowrap}
+.nudge button{flex:0 0 auto;background:var(--btn);color:var(--btn-ink);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;white-space:nowrap}
+.nudge.due button{background:var(--gold);color:var(--bg)}
 
 .fab{position:fixed;right:calc(50% - 262px);bottom:calc(22px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--btn);color:var(--btn-ink);font-size:24px;line-height:56px;text-align:center;box-shadow:0 10px 28px rgba(28,27,24,.3);z-index:6}
 @media (max-width:600px){.fab{right:20px}}
@@ -434,7 +436,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v75";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v76";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -642,6 +644,26 @@ async function checkBuild(){
    sheet counts as well: both routes go through exportBackup(). */
 const NUDGE_H=15, NUDGE_M=30;
 const bkKey=()=>"nivesh_bk_"+(AUTH?AUTH.u:"");
+function bkLast(){ let v=0; try{ v=+localStorage.getItem(bkKey())||0; }catch(e){} return v; }
+/* The banner is permanent - it carries the last-save stamp whether or not a save
+   is owing - so this only decides its TONE: quiet when the copy is current, gold
+   once 15:30 has gone past without one. */
+function bkShow(){
+  if(!AUTH||isGuest()||!ready) return false;
+  return !!(Object.keys(stocks).length||Object.keys(txns).length||meta.mf||meta.esops||meta.history);
+}
+/* "10 Sep at 3:40 pm", with today/yesterday spelled out the way the restore list does */
+function bkStamp(ms){
+  if(!ms) return "No copy saved on this device yet";
+  const d=new Date(ms), n=new Date();
+  const day0=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
+  const days=Math.round((day0(n)-day0(d))/864e5);
+  const tm=d.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"});
+  const dl=days===0?"today":(days===1?"yesterday":
+    d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})+
+      (d.getFullYear()!==n.getFullYear()?" "+d.getFullYear():""));
+  return "Last saved "+dl+" at "+tm;
+}
 /* the most recent NUDGE_H:NUDGE_M that has already gone past - before today's
    time that is yesterday's, which is what keeps an unanswered nudge on screen */
 function nudgeAt(){
@@ -650,12 +672,7 @@ function nudgeAt(){
   if(t>n) t.setDate(t.getDate()-1);
   return t.getTime();
 }
-function nudgeDue(){
-  if(!AUTH||isGuest()||!ready) return false;
-  if(!(Object.keys(stocks).length||Object.keys(txns).length||meta.mf||meta.esops||meta.history)) return false;
-  let last=0; try{ last=+localStorage.getItem(bkKey())||0; }catch(e){}
-  return last<nudgeAt();
-}
+function bkOverdue(){ return bkLast()<nudgeAt(); }
 function nudgeDone(){ try{ localStorage.setItem(bkKey(),String(Date.now())); }catch(e){} }
 /* One file with everything. Named so it is obvious in a phone's Files app:
    capital F to find by sight, ISO date so copies sort oldest-to-newest, clock
@@ -670,16 +687,25 @@ function exportBackup(){
 }
 function renderNudge(){
   const el=$("#nudge"); if(!el) return;
-  if(!nudgeDue()){ el.className="nudge"; el.innerHTML=""; el.dataset.built=""; return; }
-  el.className="nudge on";
-  if(el.dataset.built==="1") return;        /* never rebuild under the user's finger */
-  el.dataset.built="1";
-  el.innerHTML='<span>Keep today\u2019s copy on this device \u2014 your only backup outside Google.</span>'+
+  if(!bkShow()){ el.className="nudge"; el.innerHTML=""; el.dataset.sig=""; return; }
+  const last=bkLast(), due=bkOverdue();
+  el.className="nudge on"+(due?" due":"");
+  /* rebuild only when something actually changed, so the row is never replaced
+     under the user's finger and the "Saved" confirmation survives a 5s tick */
+  const sig=last+"|"+(due?1:0);
+  if(el.dataset.sig===sig) return;
+  el.dataset.sig=sig;
+  /* the nudge line only earns its place when there IS an older copy to contrast
+     with; with none, the stamp already says everything */
+  const lead=(due&&last)?"Keep a copy on this device \u2014 ":"";
+  el.innerHTML='<span>'+lead+'<span class="mono">'+
+    esc(lead?bkStamp(last).replace(/^Last/,"last"):bkStamp(last))+'</span></span>'+
     '<button id="nudgeGo">Save now</button>';
   $("#nudgeGo").addEventListener("click",e=>{
     exportBackup(); nudgeDone();
+    el.dataset.sig="held";                  /* hold the confirmation past the next tick */
     e.currentTarget.textContent="Saved";
-    setTimeout(()=>{ el.dataset.built=""; renderNudge(); },1800);
+    setTimeout(()=>{ el.dataset.sig=""; renderNudge(); },1800);
   });
 }
 

@@ -284,7 +284,8 @@ happily written the funds away.
      matters less now the banner is permanent, since only the tone changes. Ask before altering.
 5. Wrong-PIN attempts are counted per account and a given wrong credential only ever costs one
    strike, so one stale device cannot lock the owner out (see the lockout gotcha).
-6. The monthly email below puts a copy outside the Google account entirely.
+6. The monthly email below puts a copy in a second Google *service*. It is not outside the
+   account - see the correction under *Monthly off-Drive backup*.
 
 ### Monthly off-Drive backup
 
@@ -295,9 +296,13 @@ running against Head). The Apps Script project is named **"Folio backend (portfo
 the `backup_users` script property names the account - the code constant is deliberately empty
 so a public repo never carries half a login, `whoIsBackedUp()` prints what is configured, and a
 run with nothing configured emails the owner a warning instead of failing silently). It exists
-because the live file, the daily
-snapshots and the monthly archive all sit in one Google account - the email is the copy that
-survives losing it.
+because the live file, the daily snapshots and the monthly archive all sit in one Google account.
+**Be accurate about how far it goes:** `MailApp.sendEmail` addresses
+`Session.getEffectiveUser().getEmail()` - the script owner - so the attachment lands in the *same*
+account's Gmail. It survives a bad restore, a deleted Drive folder or a wiped data file; it does
+**not** survive losing the account. The only copy that does is the device file, which is why v75-v77
+put a permanent banner on it. Forwarding the monthly mail to a non-Google address would close the
+gap; that is a standing mail rule and the owner's call, so ask, do not add one.
 
 **Head vs deployed (deliberate, do not "fix"):** the backup functions live in the project
 **head**; time-driven triggers run head, while the web app serves its **pinned version**. So

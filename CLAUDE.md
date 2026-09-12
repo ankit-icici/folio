@@ -261,13 +261,27 @@ happily written the funds away.
 4. ⚙ Account → *Go back to an earlier version* browses and restores any snapshot in-app;
    *Save a copy to this device* writes the whole document (`liveDoc()`) as a file. Both restore
    routes preview the copy's contents and name what restoring it would **remove** first.
-   A **daily nudge** (v75) asks for that file at **15:30 local**, one tap to save. It is the only
-   copy that does not live in the same Google account as everything else, which is why the app
-   asks rather than leaving it to memory. `nudgeAt()` resolves to the most recent 15:30 that has
-   passed, so an unanswered nudge stays up overnight and is replaced - not cleared - by the next
-   day's. Both it and the Account button go through `exportBackup()`; keep them on one path, and
-   `nudgeDone()` on both, or saving from Account leaves the banner up. Hidden for guests, for an
-   empty portfolio, and before the first load.
+   A **permanent banner** (v76, was a timed nudge in v75) sits under `#status` carrying the
+   last-save stamp, with one tap to save. That device copy is the only one that does not live in
+   the same Google account as the data file, the snapshots and the monthly email, which is why
+   the app states its age rather than leaving it to memory.
+   - `bkShow()` decides whether it appears at all - **not** whether a save is owing. It is always
+     on screen except for guests, an empty portfolio, and before the first load.
+   - `bkOverdue()` only decides its **tone**: quiet (`--surface`/`--muted`) when the copy is
+     current, gold (`.due`) once 15:30 has gone past without one. Do not wire it back to
+     visibility; the stamp is the point, and a permanently gold bar becomes wallpaper.
+   - `nudgeAt()` resolves to the most recent 15:30 that has passed, so before 15:30 today the
+     live nudge is still yesterday's. An unanswered banner therefore just stays gold - nothing
+     is created or replaced at midnight, because there is one banner and one stored timestamp.
+   - `bkStamp()` renders it, reusing the app's `toLocaleDateString("en-IN",…)` so "5 Sept" reads
+     the same as every other date in the app.
+   - `renderNudge()` rebuilds only when `last|due` changes, so the row is never swapped under a
+     finger and the "Saved" confirmation survives the 5s `renderHeroOnly()` tick.
+   - Both the banner and the Account button go through `exportBackup()` and both call
+     `nudgeDone()`. Keep them on one path or saving from Account leaves a stale stamp.
+   - Saving in the morning still turns the banner gold at 15:30 that day: the rule is "since the
+     last 15:30", not "since midnight". Raised with the owner and not settled either way - it
+     matters less now the banner is permanent, since only the tone changes. Ask before altering.
 5. Wrong-PIN attempts are counted per account and a given wrong credential only ever costs one
    strike, so one stale device cannot lock the owner out (see the lockout gotcha).
 6. The monthly email below puts a copy outside the Google account entirely.

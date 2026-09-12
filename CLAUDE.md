@@ -50,7 +50,8 @@ Anything the owner must decide is under *Open decisions / backlog*. Ask; do not 
 The app was called **nivesh** before it was Folio, and that name still keys everything that
 persists, so grepping for "folio" finds none of it: Drive files `nivesh-acc-<hash16>.json`
 (`FILE_PREFIX`), and localStorage `nivesh_auth`, `nivesh_cache_<user>`, `nivesh_mask`,
-`nivesh_theme`, `nivesh_recent_<user>`. Renaming any of them orphans live data or signs
+`nivesh_theme`, `nivesh_recent_<user>`, `nivesh_bk_<user>` (when the device copy was last
+saved - drives the daily backup nudge). Renaming any of them orphans live data or signs
 everyone out - leave them alone.
 
 ## Files
@@ -260,6 +261,13 @@ happily written the funds away.
 4. ⚙ Account → *Go back to an earlier version* browses and restores any snapshot in-app;
    *Save a copy to this device* writes the whole document (`liveDoc()`) as a file. Both restore
    routes preview the copy's contents and name what restoring it would **remove** first.
+   A **daily nudge** (v75) asks for that file at **15:30 local**, one tap to save. It is the only
+   copy that does not live in the same Google account as everything else, which is why the app
+   asks rather than leaving it to memory. `nudgeAt()` resolves to the most recent 15:30 that has
+   passed, so an unanswered nudge stays up overnight and is replaced - not cleared - by the next
+   day's. Both it and the Account button go through `exportBackup()`; keep them on one path, and
+   `nudgeDone()` on both, or saving from Account leaves the banner up. Hidden for guests, for an
+   empty portfolio, and before the first load.
 5. Wrong-PIN attempts are counted per account and a given wrong credential only ever costs one
    strike, so one stale device cannot lock the owner out (see the lockout gotcha).
 6. The monthly email below puts a copy outside the Google account entirely.

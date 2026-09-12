@@ -330,6 +330,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px}
 .empty b{display:block;font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-weight:400;color:var(--ink);font-size:20px;margin-bottom:6px}
 .status{margin:10px 0 0;padding:10px 14px;border-radius:12px;background:var(--gold-soft);color:var(--gold);font-size:13px;font-weight:500;display:none}
+.nudge{margin:10px 0 0;padding:11px 14px;border-radius:12px;background:var(--gold-soft);color:var(--gold);font-size:13px;font-weight:500;display:none;align-items:center;gap:12px}
+.nudge.on{display:flex}
+.nudge span{flex:1 1 auto;line-height:1.35}
+.nudge button{flex:0 0 auto;background:var(--gold);color:var(--bg);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;white-space:nowrap}
 
 .fab{position:fixed;right:calc(50% - 262px);bottom:calc(22px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--btn);color:var(--btn-ink);font-size:24px;line-height:56px;text-align:center;box-shadow:0 10px 28px rgba(28,27,24,.3);z-index:6}
 @media (max-width:600px){.fab{right:20px}}
@@ -430,7 +434,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v74";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v75";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -629,6 +633,56 @@ async function checkBuild(){
   }catch(e){}
 }
 
+/* ---------- daily backup nudge ----------
+   The copy on this device is the only one that does not live in the same Google
+   account as the data file, the daily snapshots and the monthly archive - so the
+   app asks for it once a day rather than leaving it to memory. It appears at
+   NUDGE_H:NUDGE_M and stays put, across reloads and overnight, until the file is
+   actually saved or the next day's nudge replaces it. Saving from the Account
+   sheet counts as well: both routes go through exportBackup(). */
+const NUDGE_H=15, NUDGE_M=30;
+const bkKey=()=>"nivesh_bk_"+(AUTH?AUTH.u:"");
+/* the most recent NUDGE_H:NUDGE_M that has already gone past - before today's
+   time that is yesterday's, which is what keeps an unanswered nudge on screen */
+function nudgeAt(){
+  const n=new Date(), t=new Date(n);
+  t.setHours(NUDGE_H,NUDGE_M,0,0);
+  if(t>n) t.setDate(t.getDate()-1);
+  return t.getTime();
+}
+function nudgeDue(){
+  if(!AUTH||isGuest()||!ready) return false;
+  if(!(Object.keys(stocks).length||Object.keys(txns).length||meta.mf||meta.esops||meta.history)) return false;
+  let last=0; try{ last=+localStorage.getItem(bkKey())||0; }catch(e){}
+  return last<nudgeAt();
+}
+function nudgeDone(){ try{ localStorage.setItem(bkKey(),String(Date.now())); }catch(e){} }
+/* One file with everything. Named so it is obvious in a phone's Files app:
+   capital F to find by sight, ISO date so copies sort oldest-to-newest, clock
+   time so two saves in one day do not collide. */
+function exportBackup(){
+  const blob=new Blob([JSON.stringify({...liveDoc(),savedAt:meta.updatedAt||new Date().toISOString(),
+    exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  const ts=new Date(), p2=n=>String(n).padStart(2,"0");
+  a.download="Folio-backup-"+today()+"-"+p2(ts.getHours())+p2(ts.getMinutes())+".json";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+function renderNudge(){
+  const el=$("#nudge"); if(!el) return;
+  if(!nudgeDue()){ el.className="nudge"; el.innerHTML=""; el.dataset.built=""; return; }
+  el.className="nudge on";
+  if(el.dataset.built==="1") return;        /* never rebuild under the user's finger */
+  el.dataset.built="1";
+  el.innerHTML='<span>Keep today\u2019s copy on this device \u2014 your only backup outside Google.</span>'+
+    '<button id="nudgeGo">Save now</button>';
+  $("#nudgeGo").addEventListener("click",e=>{
+    exportBackup(); nudgeDone();
+    e.currentTarget.textContent="Saved";
+    setTimeout(()=>{ el.dataset.built=""; renderNudge(); },1800);
+  });
+}
+
 /* ---------- FIFO computations ---------- */
 function stockTxns(sid){
   return Object.entries(txns).filter(([,t])=>t.stockId===sid).map(([id,t])=>({id,...t}))
@@ -725,6 +779,7 @@ function shellHTML(){
     '<button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
     '<button class="tbtn" id="cfgBtn" aria-label="Account">⚙</button></div></header>'+
     '<div class="status" id="status"></div>'+
+    '<div class="nudge" id="nudge"></div>'+
     '<section class="idx" id="idx"></section>'+
     '<nav class="seg" role="tablist" id="seg">'+
     '<button role="tab" data-tab="home">Home</button>'+
@@ -808,7 +863,7 @@ function renderHeroOnly(){
   const v=view();
   h.innerHTML=v==="home"?homeHeroHTML(totals(all())):(v==="stocks"?heroHTML(totals(all())):(v==="mf"?mfHeroHTML():""));
   if(v==="home"&&ready){ const c=$("#content"); if(c&&c.querySelector(".hrow")) c.innerHTML=homeHTML(totals(all())), bind(); }
-  renderIdx();
+  renderIdx(); renderNudge();
 }
 function render(){
   const list=all(), core=list.filter(x=>x.s.pool!=="ipo"), ipo=list.filter(x=>x.s.pool==="ipo");
@@ -823,7 +878,7 @@ function render(){
     [["port","Portfolio"],["sip","SIPs"],["swp","SWPs"],["tx","Lumpsum"]].map(o=>
       '<button role="tab" aria-selected="'+(mfTab===o[0])+'" data-mtab="'+o[0]+'">'+o[1]+'</button>').join("")+'</nav>':"");
   h.innerHTML=v==="home"?homeHeroHTML(totals(list)):(v==="stocks"?heroHTML(totals(list)):(v==="mf"?mfHeroHTML():""));
-  renderIdx();
+  renderIdx(); renderNudge();
   const c=$("#content");
   if(tab==="home") c.innerHTML=homeHTML(totals(list));
   else if(tab==="mf") c.innerHTML=mfHTML();
@@ -2752,13 +2807,7 @@ function cfgSheet(){
     }catch(e2){ showErr("#sErr","Could not reach the server."); }
   });
   $("#sExp").addEventListener("click",e=>{
-    const blob=new Blob([JSON.stringify({...liveDoc(),savedAt:meta.updatedAt||new Date().toISOString(),exportedAt:new Date().toISOString()},null,1)],{type:"application/json"});
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    /* a name that is obvious in a phone's Files app: capital F to find by sight,
-       ISO date so copies sort oldest-to-newest, clock time so two in a day differ */
-    const ts=new Date(), p2=n=>String(n).padStart(2,"0");
-    a.download="Folio-backup-"+today()+"-"+p2(ts.getHours())+p2(ts.getMinutes())+".json";
-    a.click(); URL.revokeObjectURL(a.href);
+    exportBackup(); nudgeDone();
     e.currentTarget.textContent="Saved to your downloads";
     setTimeout(()=>{const b=$("#sExp"); if(b) b.textContent="Save a copy to this device";},2500);
   });

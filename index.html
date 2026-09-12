@@ -334,8 +334,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .nudge.on{display:flex}
 .nudge.due{background:var(--gold-soft);border-color:transparent;color:var(--gold);font-size:13px}
 .nudge span{flex:1 1 auto;line-height:1.35}
-.nudge button{flex:0 0 auto;background:var(--btn);color:var(--btn-ink);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;white-space:nowrap}
-.nudge.due button{background:var(--gold);color:var(--bg)}
+.nudge button{flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;white-space:nowrap}
+.nudge.due button{background:var(--gold);border-color:transparent;color:var(--bg)}
 
 .fab{position:fixed;right:calc(50% - 262px);bottom:calc(22px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--btn);color:var(--btn-ink);font-size:24px;line-height:56px;text-align:center;box-shadow:0 10px 28px rgba(28,27,24,.3);z-index:6}
 @media (max-width:600px){.fab{right:20px}}
@@ -436,7 +436,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v76";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v77";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */

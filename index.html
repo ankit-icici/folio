@@ -445,7 +445,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v84";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v85";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1746,10 +1746,15 @@ function mfTxRow(t,showFund){
   const d=new Date(t.date+"T00:00:00");
   const dl=isNaN(d)?t.date:d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"});
   const k=MFKIND[t.kind]||[t.kind,"b"], outg=t.kind==="swp"||t.kind==="out";
+  /* the NAV line: new txs carry their own nav; older ones get it looked up from the fund's
+     NAV history after render (data-txnav -> mfFillTxNavs). No code on the fund = no line. */
+  const nv=+t.nav>0?+t.nav:null;
+  const navH=!showFund&&(nv||f.code)
+    ?'<div class="fs mono"'+(nv?'':' data-txnav="'+esc(t.fid)+':'+esc(t.date||"")+'"')+'>NAV '+(nv?price(nv):'…')+'</div>':"";
   return '<div class="fr"><div class="fl">'+
     '<div class="fn"><span class="nw">'+esc(showFund?f.name:dl)+'</span>'+
       '<span class="tag '+k[1]+'">'+k[0]+'</span></div>'+
-    (showFund?'<div class="fs mono">'+esc(dl)+'</div>':"")+'</div>'+
+    (showFund?'<div class="fs mono">'+esc(dl)+'</div>':navH)+'</div>'+
     '<div class="fa mono '+(outg?"gain":"")+'">'+(outg?"+":"−")+rupee(+t.amt||0)+'</div></div>';
 }
 function mfFundTxHTML(id){
@@ -1923,6 +1928,19 @@ async function mfNavOn(code,day){
   }catch(e){}
   return null;
 }
+/* Fills the NAV line on ledger rows whose tx predates v85 (no nav stored) from the per-fund
+   history cache. Purely cosmetic and read-only - it never writes to the document. Rows are
+   filled one by one; the first row of a fund fetches its history, the rest hit the cache. */
+async function mfFillTxNavs(){
+  for(const el of document.querySelectorAll("[data-txnav]")){
+    const i=el.dataset.txnav.indexOf(":"), fid=el.dataset.txnav.slice(0,i), d=el.dataset.txnav.slice(i+1);
+    const f=mfunds()[fid];
+    if(!f||!f.code||!d){ el.textContent="NAV —"; continue; }
+    const r=await mfNavOn(f.code,d);
+    if(!el.isConnected) return;                     /* the list was re-rendered - stop */
+    el.textContent=r?"NAV "+price(r.nav):"NAV —";
+  }
+}
 /* Wires a record sheet's date box to its NAV box: the date drives the price. Picking a date
    refetches and overwrites the NAV; a hand-typed NAV stays put until the date changes again
    (programmatic fills do not fire 'input', so only real typing sets the dirty flag). A fund
@@ -1988,7 +2006,7 @@ function mfRecordSheet(id){
       const g=M.funds[s.fid]; if(!g) return;
       g.units=+(((+g.units||0)+amt/nav).toFixed(4));
       g.inv=Math.round((+g.inv||0)+amt);
-      M.txs[uid()]={fid:s.fid,kind:"sip",amt:Math.round(amt),date:d,pid:id};
+      M.txs[uid()]={fid:s.fid,kind:"sip",amt:Math.round(amt),nav,date:d,pid:id};
     });
     closeSheet(); setTab("mf");
   });
@@ -2048,7 +2066,7 @@ function mfRecordSwpSheet(id){
       const g=M.funds[s.fid]; if(!g) return;
       g.units=full?0:+c.uLeft.toFixed(4);
       g.inv=full?0:Math.round(c.iLeft);
-      M.txs[uid()]={fid:s.fid,kind:"swp",amt:Math.round(c.amt),date:d,pid:id};
+      M.txs[uid()]={fid:s.fid,kind:"swp",amt:Math.round(c.amt),nav:parseFloat($("#rsN").value),date:d,pid:id};
     });
     closeSheet(); setTab("mf");
   });
@@ -2289,7 +2307,7 @@ function mfTxSheet(id){
   $("#tGo").addEventListener("click",()=>{
     const fid=$("#tF").value, amt=parseFloat($("#tA").value), d=$("#tD").value;
     if(!fid||!(amt>0)||!d) return showErr("#tErr","Fund, amount and date are required.");
-    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind,...(it&&it.pid?{pid:it.pid}:{})}; });
+    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind,...(it&&it.pid?{pid:it.pid}:{}),...(it&&+it.nav>0?{nav:+it.nav}:{})}; });
     closeSheet(); setTab("mf");
   });
   const del=$("#tDel");
@@ -2356,7 +2374,7 @@ function mfRedeemSheet(id){
       const g=M.funds[id]; if(!g) return;
       g.units=full?0:+c.uLeft.toFixed(4);
       g.inv=full?0:Math.round(c.iLeft);
-      M.txs[uid()]={fid:id,kind:"out",amt:Math.round(c.amt),date:d};
+      M.txs[uid()]={fid:id,kind:"out",amt:Math.round(c.amt),nav,date:d};
     });
     mfSel=null; closeSheet(); setTab("mf");
   });
@@ -2601,6 +2619,7 @@ function bind(){
   document.querySelectorAll("[data-month]").forEach(b=>
     b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
   bindPlan();
+  mfFillTxNavs();
   bindEsop();
 }
 function bindPlan(){

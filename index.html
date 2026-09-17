@@ -445,7 +445,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v83";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v84";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1884,21 +1884,24 @@ const pauseLabel=s=>{
    write it) answers only for that plan, so two tranches into the same fund nag separately.
    An untagged tx (a lumpsum, a redemption, anything from before v82) answers for every plan
    on the fund, which keeps the v80 rule: money already accounted for is never nagged about. */
-function planDue(kind){
+function planStatus(kind){
   const t=today(), ym=t.slice(0,7), dom=+t.slice(8,10);
-  const F=mfunds(), TX=Object.values(mfTxs()), out=[];
+  const F=mfunds(), TX=Object.values(mfTxs());
   const plans=kind==="sip"?mfSips():mfSwps();
   const K=kind==="sip"?{sip:1,in:1}:{swp:1,out:1};
+  let total=0; const due=[], left=[];
   for(const [id,s] of Object.entries(plans)){
     const f=F[s.fid]; if(!f) continue;
-    if(sipPaused(s)) continue;                       /* no money is moving - never nag */
-    if((+s.day||1)>dom) continue;                    /* not due yet this month */
+    if(sipPaused(s)) continue;                       /* no money is moving - not expected */
+    total++;
     if(TX.some(t2=>t2.fid===s.fid&&K[t2.kind]&&
-                   String(t2.date||"").slice(0,7)===ym&&(!t2.pid||t2.pid===id))) continue;
-    out.push({id,s,f});
+               String(t2.date||"").slice(0,7)===ym&&(!t2.pid||t2.pid===id))) continue;
+    left.push({id,s,f});                             /* not recorded this month yet */
+    if((+s.day||1)<=dom) due.push({id,s,f});         /* ...and its day has already passed */
   }
-  return out;
+  return {total,due,left};
 }
+const planDue=kind=>planStatus(kind).due;
 const sipDue=()=>planDue("sip");
 const swpDue=()=>planDue("swp");
 const planDueIds=kind=>{const m={}; for(const d of planDue(kind)) m[d.id]=1; return m;};
@@ -2063,8 +2066,16 @@ function mfPlansHTML(kind){
      units still showing that the AMC has already paid out */
   const due=planDueIds(kind);
   const nDue=Object.keys(due).length;
-  return '<div class="secthead rh">Active '+kind.toUpperCase()+'s'+(tot?' · '+rupee(tot)+' ∕ month':'')+
-    '<button class="linky" data-mfadd="'+kind+'">Add '+kind.toUpperCase()+'</button></div>'+
+  /* the month at a glance: the gold banner below only covers what is OVERDUE, this line also
+     counts the plans whose day has not come yet, so "all recorded" really means all */
+  const st=planStatus(kind), W=kind.toUpperCase();
+  const stLine=!st.total?"":'<p class="hint" style="padding:6px 4px 0">'+
+    (st.left.length===0
+      ?(st.total===1?'This month’s '+W+' is recorded.':'All '+st.total+' '+W+'s recorded this month.')+' <span class="gain">✓</span>'
+      :(st.total===1?'This month’s '+W+' is still to record.'
+                    :st.left.length+' of '+st.total+' '+W+'s still to record this month.'))+'</p>';
+  return '<div class="secthead rh">Active '+W+'s'+(tot?' · '+rupee(tot)+' ∕ month':'')+
+    '<button class="linky" data-mfadd="'+kind+'">Add '+W+'</button></div>'+stLine+
     (nDue?'<p class="hint due" style="padding:8px 12px;margin-top:10px;border-radius:12px;'+
       'background:var(--gold-soft);color:var(--gold)"><b>'+nDue+
       (kind==="sip"?(nDue===1?' instalment':' instalments'):(nDue===1?' payout':' payouts'))+

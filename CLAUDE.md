@@ -385,6 +385,13 @@ meta.mf = {
   and the date-driven price autofill behave on real data ("all changes reflecting"). The
   monthly rhythm from here is three one-tap confirms: payout after the 15th, tranches after
   the 20th and 21st.
+- **Month-at-a-glance line on the SIPs and SWPs sub-tabs (v84).** `planStatus(kind)` is the one
+  pass: per active (non-paused) plan it answers "recorded this month?" (same pid rule as v82)
+  and returns `{total, left, due}`; `planDue()` is now just its `due` view, so the DUE logic is
+  byte-identical (re-proven by rerunning the v82 cases). The line above the plan list reads
+  "All N SIPs recorded this month ✓" or "X of N SIPs still to record this month" - unlike the
+  gold banner, `left` also counts plans whose day has NOT come yet, so "all recorded" really
+  means the month is finished, not merely nothing-overdue. Owner asked for it 2026-09-17.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

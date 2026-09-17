@@ -220,6 +220,14 @@ one place that computes it (core invested + the cash box + any single-stock matc
   Not the same as `d`; don't conflate them.
 - `planDilute` — fresh money into the *other* holdings that brings an over-weight name down to
   target with no sale. Shown per row as "or +Rs X in others".
+- **Targets cannot add up past 100% (v82).** The red footer sum used to be only a warning. Now
+  the `data-plan-t` change handler trims the committed value to `100 − (sum of the other
+  targets, drafts included)` before saving, so what is stored in `stocks[].target` can never
+  total above 100. While a draft is over the line, `refreshPlan()` shows `TGTMSG` in the
+  `.plwarn` line (`data-role="tgtwarn"`); after a trim the handler overwrites it with what was
+  trimmed and why. Legacy data already over 100 just shows the warning — each row clamps as it
+  is next edited, and a row committed when the others already total 100 clears to "set tgt"
+  (deliberate: zero room means no target, not a fake sliver).
 
 ### Flows periods (note: the `planBand` rule below belongs to Plan, not Flows)
 
@@ -335,6 +343,30 @@ meta.mf = {
     which would have undone v80. Deleting is not the substitute: it throws away the amount and
     the day, so restarting means retyping from memory.
   - Pausing touches nothing historical - units, cost basis and every past `txs` row are untouched.
+- **SWPs record like SIPs now (v82).** `planDue(kind)` generalises the old `sipDue()`
+  (`sipDue`/`swpDue` are thin wrappers, `planDueIds(kind)` replaced `sipDueIds`), so an SWP
+  whose day has passed with no money-out (`swp` **or** `out` — a manual Redeem counts) recorded
+  against the source fund this month is flagged DUE, counted on the SWPs sub-tab, and gets a
+  one-tap "Record this month's payout".
+  - `mfRecordSwpSheet(id)` is the payout mirror of `mfRecordSheet`: amount/date/NAV pre-filled
+    but editable, cuts `amt/nav` units, releases cost at average (the same maths as Redeem),
+    writes `{kind:'swp', pid}`. Paying out everything leaves the fund at `units:0, inv:0` —
+    closed, still counted. It never posts the landing side: when the plan has `to`, the sheet
+    says to record arrivals on the destination fund, with their real dates and amounts.
+  - **Both record sheets now tag their tx with `pid:<plan id>`.** A tx carrying a `pid` answers
+    the due-check only for that plan; an untagged tx (lumpsum, redemption, anything pre-v82)
+    answers for every plan on the fund, which keeps the v80 rule. The tag is what lets two
+    tranches into ONE fund nag separately — without it, recording the first instalment on a
+    fund silenced every other plan on that fund for the month. `mfTxSheet` preserves `pid` on
+    edit; dropping it would re-flag an already-recorded month.
+  - The owner's real flow this was built for: SWP ₹30,000 on the 15th out of SBI Balanced
+    Advantage (`to` Helios Flexi Cap), landing as two purchases there — ₹25,000 on the 20th and
+    ₹5,000 on the 21st, set up as two SIP plans on Helios. Three nags a month, three one-tap
+    confirms; across the portfolio the +30k out and −30k in net to zero in the returns, which
+    is correct for an internal transfer.
+  - Verified by differential runs of the extracted `planDue` in node (18 cases: due/cleared/
+    stale-month/paused, per-plan tags, untagged fallback, clamp maths, payout maths incl. the
+    close-out edge), plus a live check after deploy.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

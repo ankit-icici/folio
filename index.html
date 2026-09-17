@@ -281,6 +281,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .plhead span:first-child{text-align:left}
 .plfoot{border-top:1px solid var(--line);margin-top:2px;padding-top:13px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
 .plfoot b{font-weight:600;color:var(--ink)}
+.plwarn{color:var(--loss);font-size:12px;margin-top:8px}
 
 /* plan table */
 .ptwrap{margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);
@@ -444,7 +445,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v81";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v82";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -940,7 +941,7 @@ function render(){
     /* the SIPs tab carries the count of unrecorded instalments, so the nudge is visible
        from the Funds tab without having to go looking for it */
     [["port","Portfolio"],["sip","SIPs"+(sipDue().length?" ("+sipDue().length+")":"")],
-     ["swp","SWPs"],["tx","Lumpsum"]].map(o=>
+     ["swp","SWPs"+(swpDue().length?" ("+swpDue().length+")":"")],["tx","Lumpsum"]].map(o=>
       '<button role="tab" aria-selected="'+(mfTab===o[0])+'" data-mtab="'+o[0]+'">'+o[1]+'</button>').join("")+'</nav>':"");
   h.innerHTML=v==="home"?homeHeroHTML(totals(list)):(v==="stocks"?heroHTML(totals(list)):(v==="mf"?mfHeroHTML():""));
   renderIdx(); renderNudge(); syncSegOffset();
@@ -1105,6 +1106,7 @@ function moveShares(x,n){
   return (n<0?"−":"+")+Math.round(Math.abs(n)/x.s.price)+" sh";
 }
 function planBand(t,T2){ return Math.max(500, t/100*T2*0.02); }
+const TGTMSG="Targets can\u2019t add up past 100% \u2014 a number that would cross it is trimmed to what\u2019s left.";
 /* fresh money into the OTHER holdings that brings this one inside the band, no sale */
 function planDilute(inv,t,T2){
   const r=t/100;
@@ -1152,6 +1154,7 @@ function planHTML(core){
     movesHTML(core,c)+
     '<div class="plfoot"><span>Targets <b class="mono" data-role="sumt" style="color:'+(sumT>100.01?"var(--loss)":"var(--ink)")+'">'+sumT.toFixed(1)+'%</b></span>'+
     '<span>Unallocated <b class="mono" data-role="unalloc">'+smoney(Math.abs(c.cash-sumDelta)<1?0:c.cash-sumDelta)+'</b></span></div>'+
+    '<div class="plwarn" data-role="tgtwarn" style="display:'+(sumT>100.01?"block":"none")+'">'+(sumT>100.01?TGTMSG:"")+'</div>'+
     '</div>'+
     '<div class="ptwrap"><table class="pt"><thead><tr>'+
       '<th scope="col">Stock</th><th scope="col">Buy&nbsp;&lt;</th><th scope="col">CMP</th>'+
@@ -1876,20 +1879,29 @@ const pauseLabel=s=>{
   const p=s&&s.pause;
   return (p===1||p===true)?"paused until you turn it back on":"paused until "+monthName(String(p));
 };
-function sipDue(){
+/* Both kinds can be due - a SIP is money in that has not been recorded, an SWP is money out
+   whose units are still showing. A tx tagged with the plan's own id (pid - the record sheets
+   write it) answers only for that plan, so two tranches into the same fund nag separately.
+   An untagged tx (a lumpsum, a redemption, anything from before v82) answers for every plan
+   on the fund, which keeps the v80 rule: money already accounted for is never nagged about. */
+function planDue(kind){
   const t=today(), ym=t.slice(0,7), dom=+t.slice(8,10);
   const F=mfunds(), TX=Object.values(mfTxs()), out=[];
-  for(const [id,s] of Object.entries(mfSips())){
+  const plans=kind==="sip"?mfSips():mfSwps();
+  const K=kind==="sip"?{sip:1,in:1}:{swp:1,out:1};
+  for(const [id,s] of Object.entries(plans)){
     const f=F[s.fid]; if(!f) continue;
-    if(sipPaused(s)) continue;                       /* no money is going out - never nag */
+    if(sipPaused(s)) continue;                       /* no money is moving - never nag */
     if((+s.day||1)>dom) continue;                    /* not due yet this month */
-    if(TX.some(t2=>t2.fid===s.fid&&(t2.kind==="sip"||t2.kind==="in")&&
-                   String(t2.date||"").slice(0,7)===ym)) continue;
+    if(TX.some(t2=>t2.fid===s.fid&&K[t2.kind]&&
+                   String(t2.date||"").slice(0,7)===ym&&(!t2.pid||t2.pid===id))) continue;
     out.push({id,s,f});
   }
   return out;
 }
-const sipDueIds=()=>{const m={}; for(const d of sipDue()) m[d.id]=1; return m;};
+const sipDue=()=>planDue("sip");
+const swpDue=()=>planDue("swp");
+const planDueIds=kind=>{const m={}; for(const d of planDue(kind)) m[d.id]=1; return m;};
 /* One instalment, confirmed rather than assumed. Everything is pre-filled - the amount from the
    plan, the date from the plan's own day this month, the NAV from the last refresh - but all
    three stay editable, because an instalment can bounce, be paused, or buy at a NAV that is not
@@ -1929,7 +1941,65 @@ function mfRecordSheet(id){
       const g=M.funds[s.fid]; if(!g) return;
       g.units=+(((+g.units||0)+amt/nav).toFixed(4));
       g.inv=Math.round((+g.inv||0)+amt);
-      M.txs[uid()]={fid:s.fid,kind:"sip",amt:Math.round(amt),date:d};
+      M.txs[uid()]={fid:s.fid,kind:"sip",amt:Math.round(amt),date:d,pid:id};
+    });
+    closeSheet(); setTab("mf");
+  });
+}
+/* The SWP mirror of the instalment sheet: one payout, confirmed rather than assumed. Units
+   and cost basis leave the fund at average cost - the same maths as Redeem - and the money out
+   is written as a 'swp' tx (tagged with the plan id) so the returns see it. When the plan feeds
+   another fund, nothing is posted there automatically: the landing purchases can arrive on
+   other days and in other amounts, so they are recorded on the receiving fund itself - set
+   them up as SIPs there and each tranche gets its own nag. */
+function mfRecordSwpSheet(id){
+  if(guestGuard()) return;
+  if(maskGuard()) return;
+  const s=mfSwps()[id]; if(!s) return;
+  const f=mfunds()[s.fid]; if(!f) return;
+  const nav0=+f.nav||0, uHave=+f.units||0, invHave=+f.inv||0;
+  if(!(uHave>0)||!(nav0>0)){ openSheet("Record payout",'<p class="hint">This fund has no units or no NAV yet \u2014 it needs both before a payout can be recorded.</p>'); return; }
+  const t=today(), day=Math.min(Math.max(1,+s.day||1),28);
+  const d0=t.slice(0,7)+"-"+String(day).padStart(2,"0");
+  const dest=s.to?mfunds()[s.to]:null;
+  openSheet("Record payout",
+    '<p class="hint" style="margin-top:4px">Out of <b style="color:var(--ink)">'+esc(f.name)+'</b>. '+
+      'This takes the units out of the fund and counts the money out in your returns.</p>'+
+    '<div class="f2"><div class="f"><label>Amount paid out</label><input id="rsA" class="mono" inputmode="decimal" value="'+(+s.amt||0)+'"></div>'+
+    '<div class="f"><label>Date</label><input id="rsD" type="date" value="'+esc(d0)+'"></div></div>'+
+    '<div class="f"><label>NAV it sold at</label><input id="rsN" class="mono" inputmode="decimal" value="'+nav0+'"></div>'+
+    '<div class="hint" id="rsPrev" style="margin-top:2px"></div>'+
+    (dest?'<p class="hint">This plan feeds <b style="color:var(--ink)">'+esc(dest.name)+'</b> \u2014 record the money landing there separately when it arrives, with its real dates and amounts.</p>':"")+
+    '<div class="err" id="rsErr"></div>'+
+    '<button class="primary" id="rsGo">Record it</button>');
+  const calc=()=>{
+    const a=parseFloat($("#rsA").value), n=parseFloat($("#rsN").value);
+    if(!(a>0)||!(n>0)) return null;
+    let units=a/n; if(units>uHave*1.0001) units=uHave;
+    const cost=invHave*(units/uHave);
+    return {units,amt:a,cost,gain:a-cost,uLeft:Math.max(0,uHave-units),iLeft:Math.max(0,invHave-cost)};
+  };
+  const prev=()=>{
+    const c=calc(), el=$("#rsPrev"); if(!el) return;
+    if(!c){ el.innerHTML="Enter the amount and the NAV to see the units this sells."; return; }
+    const full=c.uLeft<0.001;
+    el.innerHTML="Sells <b>"+qfmt(c.units,3)+"</b> units \u00b7 cost released "+rupee(c.cost)+
+      " \u00b7 gain <span class=\""+cls(c.gain)+"\">"+smoney(c.gain)+"</span><br>"+
+      (full?"Nothing left \u2014 the fund stays on record as closed so its returns still count."
+           :"Left with "+qfmt(c.uLeft,3)+" units, cost "+rupee(c.iLeft)+".");
+  };
+  prev();
+  ["#rsA","#rsN"].forEach(sel=>$(sel).addEventListener("input",prev));
+  $("#rsGo").addEventListener("click",()=>{
+    const c=calc(), d=$("#rsD").value;
+    if(!c) return showErr("#rsErr","Enter the amount paid out and the NAV it sold at.");
+    if(!d) return showErr("#rsErr","Pick the date the payout went out.");
+    const full=c.uLeft<0.001;
+    mfWrite(M=>{
+      const g=M.funds[s.fid]; if(!g) return;
+      g.units=full?0:+c.uLeft.toFixed(4);
+      g.inv=full?0:Math.round(c.iLeft);
+      M.txs[uid()]={fid:s.fid,kind:"swp",amt:Math.round(c.amt),date:d,pid:id};
     });
     closeSheet(); setTab("mf");
   });
@@ -1943,15 +2013,18 @@ function mfPlansHTML(kind){
   const tot=rows.filter(cnt).filter(on).reduce((a,[,x])=>a+(+x.amt||0),0);
   const pTot=rows.filter(r=>!cnt(r)).filter(on).reduce((a,[,x])=>a+(+x.amt||0),0);
   const nPaused=rows.filter(r=>!on(r)).length;
-  /* only SIPs can be "due" - an SWP pays out, there is nothing to record on this screen */
-  const due=kind==="sip"?sipDueIds():{};
+  /* both kinds can be due: an unrecorded SIP means units missing, an unrecorded SWP means
+     units still showing that the AMC has already paid out */
+  const due=planDueIds(kind);
   const nDue=Object.keys(due).length;
   return '<div class="secthead rh">Active '+kind.toUpperCase()+'s'+(tot?' · '+rupee(tot)+' ∕ month':'')+
     '<button class="linky" data-mfadd="'+kind+'">Add '+kind.toUpperCase()+'</button></div>'+
     (nDue?'<p class="hint due" style="padding:8px 12px;margin-top:10px;border-radius:12px;'+
-      'background:var(--gold-soft);color:var(--gold)"><b>'+nDue+(nDue===1?' instalment':' instalments')+
-      ' not recorded yet this month.</b> Until you record one, the fund keeps its old units and its '+
-      'return is worked out without that money.</p>':"")+
+      'background:var(--gold-soft);color:var(--gold)"><b>'+nDue+
+      (kind==="sip"?(nDue===1?' instalment':' instalments'):(nDue===1?' payout':' payouts'))+
+      ' not recorded yet this month.</b> '+(kind==="sip"
+        ?'Until you record one, the fund keeps its old units and its return is worked out without that money.'
+        :'Until you record one, the fund still shows units the AMC has already paid out.')+'</p>':"")+
     (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
       const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to], hold=sipPaused(x);
       return '<div'+(hold?' style="opacity:.62"':'')+'>'+
@@ -1963,7 +2036,7 @@ function mfPlansHTML(kind){
         '<span>'+(hold?esc(pauseLabel(x))
                       :'on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':''))+'</span></div>'+
         '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>'+
-        (due[id]?'<div class="acts"><button class="buy" data-mfrec="'+id+'">Record this month’s instalment</button></div>':"")+
+        (due[id]?'<div class="acts"><button class="buy" data-mfrec="'+kind+':'+id+'">Record this month’s '+(kind==="sip"?'instalment':'payout')+'</button></div>':"")+
         (hold?'<div class="acts"><button class="buy" data-mfres="'+kind+':'+id+'">Resume it now</button></div>':"")+
         '</div>';}).join("")+'</div>'
     :'<p class="hint">None recorded.</p>')+
@@ -2159,7 +2232,7 @@ function mfTxSheet(id){
   $("#tGo").addEventListener("click",()=>{
     const fid=$("#tF").value, amt=parseFloat($("#tA").value), d=$("#tD").value;
     if(!fid||!(amt>0)||!d) return showErr("#tErr","Fund, amount and date are required.");
-    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind}; });
+    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind,...(it&&it.pid?{pid:it.pid}:{})}; });
     closeSheet(); setTab("mf");
   });
   const del=$("#tDel");
@@ -2435,7 +2508,9 @@ function bind(){
   document.querySelectorAll("[data-mfplan]").forEach(b=>
     b.addEventListener("click",()=>{const[k,id]=b.dataset.mfplan.split(":"); mfPlanSheet(k,id);}));
   document.querySelectorAll("[data-mfrec]").forEach(b=>
-    b.addEventListener("click",e=>{e.stopPropagation(); mfRecordSheet(b.dataset.mfrec);}));
+    b.addEventListener("click",e=>{e.stopPropagation();
+      const[k2,id2]=b.dataset.mfrec.split(":");
+      if(k2==="swp") mfRecordSwpSheet(id2); else mfRecordSheet(id2);}));
   document.querySelectorAll("[data-mfres]").forEach(b=>
     b.addEventListener("click",e=>{e.stopPropagation();
       if(guestGuard()||maskGuard()) return;
@@ -2495,8 +2570,29 @@ function bindPlan(){
   document.querySelectorAll("[data-plan-t]").forEach(inp=>{
     const id=inp.closest("tr").dataset.id;
     inp.addEventListener("input",()=>{targetDraft[id]=inp.value; refreshPlan();});
-    inp.addEventListener("change",()=>{const v=parseFloat(inp.value);
-      if(stocks[id]){ stocks[id].target=isFinite(v)?v:null; saveRemote(); }});
+    /* targets may not add up past 100%: on leaving the box the number is trimmed to whatever
+       the other targets leave free, so what is STORED can never cross 100 */
+    inp.addEventListener("change",()=>{
+      let v=parseFloat(inp.value), trimmed=false, room=0;
+      if(isFinite(v)){
+        if(v<0) v=0;
+        let others=0;
+        for(const x of corePool()){ if(x.id===id) continue;
+          const t=planT(x); if(isFinite(t)&&t>0) others+=t; }
+        room=Math.max(0,Math.round((100-others)*10)/10);
+        if(v>room){ v=room; trimmed=true; }
+      }
+      const nv=isFinite(v)&&v>0?v:null;
+      inp.value=nv===null?"":String(nv);
+      targetDraft[id]=inp.value;
+      if(stocks[id]){ stocks[id].target=nv; saveRemote(); }
+      refreshPlan();
+      if(trimmed){ const w=document.querySelector('[data-role="tgtwarn"]');
+        if(w){ w.style.display="block";
+          w.textContent=nv===null
+            ?"The other targets already add up to 100% \u2014 there is no room left for this one."
+            :"Trimmed to "+nv+"% \u2014 that is all the other targets leave before the total hits 100%."; } }
+    });
   });
   document.querySelectorAll("[data-plan-b]").forEach(inp=>{
     const id=inp.closest("tr").dataset.id;
@@ -2524,6 +2620,8 @@ function refreshPlan(){
   });
   const sb=document.querySelector('[data-role="sub"]'); if(sb) sb.innerHTML=planSubHTML(c);
   const st=document.querySelector('[data-role="sumt"]'); if(st){st.textContent=sumT.toFixed(1)+"%"; st.style.color=sumT>100.01?"var(--loss)":"var(--ink)";}
+  const tw=document.querySelector('[data-role="tgtwarn"]');
+  if(tw){ tw.style.display=sumT>100.01?"block":"none"; if(sumT>100.01) tw.textContent=TGTMSG; }
   const ua=document.querySelector('[data-role="unalloc"]'); if(ua) ua.textContent=smoney(Math.abs(c.cash-sumDelta)<1?0:c.cash-sumDelta);
   const nh=document.querySelector('[data-role="nowh"]'); if(nh) nh.textContent=(c.cash||c.put)?"New":"Now";
 }

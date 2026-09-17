@@ -444,7 +444,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v80";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v81";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1852,11 +1852,36 @@ function mfTxOnlyHTML(){
    'in' counts as well as 'sip': a lumpsum logged this month is money already accounted for, and
    nagging about it anyway would just train the owner to ignore the flag. Dates come from the
    app's own today(), so "has the day passed" agrees with every other date the app shows. */
+/* A paused plan: `pause:"YYYY-MM"` restarts IN that month, `pause:1` waits to be resumed by
+   hand. Deliberately COMPUTED and never auto-cleared - rendering must not trigger a save, so an
+   elapsed pause simply stops counting instead of rewriting the record. Pausing changes nothing
+   that already happened: units, cost basis and every past transaction are untouched. */
+const sipPaused=s=>{
+  const p=s&&s.pause; if(!p) return false;
+  if(p===1||p===true) return true;
+  return today().slice(0,7)<String(p);
+};
+/* the next 24 months as restart choices - a pause that never ends is the other option, and is
+   the empty value rather than a month */
+function pauseMonthOpts(sel){
+  const d=new Date(); d.setDate(1); const out=[];
+  for(let i=0;i<24;i++){
+    d.setMonth(d.getMonth()+1);
+    const ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    out.push('<option value="'+ym+'"'+(sel===ym?" selected":"")+'>'+monthName(ym)+'</option>');
+  }
+  return out.join("");
+}
+const pauseLabel=s=>{
+  const p=s&&s.pause;
+  return (p===1||p===true)?"paused until you turn it back on":"paused until "+monthName(String(p));
+};
 function sipDue(){
   const t=today(), ym=t.slice(0,7), dom=+t.slice(8,10);
   const F=mfunds(), TX=Object.values(mfTxs()), out=[];
   for(const [id,s] of Object.entries(mfSips())){
     const f=F[s.fid]; if(!f) continue;
+    if(sipPaused(s)) continue;                       /* no money is going out - never nag */
     if((+s.day||1)>dom) continue;                    /* not due yet this month */
     if(TX.some(t2=>t2.fid===s.fid&&(t2.kind==="sip"||t2.kind==="in")&&
                    String(t2.date||"").slice(0,7)===ym)) continue;
@@ -1913,8 +1938,11 @@ function mfPlansHTML(kind){
   const F=mfunds(), items=kind==="sip"?mfSips():mfSwps();
   const rows=Object.entries(items).sort((a,b)=>(+a[1].day||0)-(+b[1].day||0));
   const cnt=([,x])=>{const f=F[x.fid]; return f?mfCounted(f):true;};
-  const tot=rows.filter(cnt).reduce((a,[,x])=>a+(+x.amt||0),0);
-  const pTot=rows.filter(r=>!cnt(r)).reduce((a,[,x])=>a+(+x.amt||0),0);
+  /* a paused plan moves no money, so it must not inflate the "per month" headline */
+  const on=([,x])=>!sipPaused(x);
+  const tot=rows.filter(cnt).filter(on).reduce((a,[,x])=>a+(+x.amt||0),0);
+  const pTot=rows.filter(r=>!cnt(r)).filter(on).reduce((a,[,x])=>a+(+x.amt||0),0);
+  const nPaused=rows.filter(r=>!on(r)).length;
   /* only SIPs can be "due" - an SWP pays out, there is nothing to record on this screen */
   const due=kind==="sip"?sipDueIds():{};
   const nDue=Object.keys(due).length;
@@ -1925,20 +1953,26 @@ function mfPlansHTML(kind){
       ' not recorded yet this month.</b> Until you record one, the fund keeps its old units and its '+
       'return is worked out without that money.</p>':"")+
     (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
-      const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to];
-      return '<div>'+
+      const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to], hold=sipPaused(x);
+      return '<div'+(hold?' style="opacity:.62"':'')+'>'+
         '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
         '<div class="el"><b>'+esc(f.name)+(t?' <em class="into">→ '+esc(t.name)+'</em>':"")+
           (mfPrivate(f)?' <span class="tag s">PRIVATE</span>':"")+
+          (hold?' <span class="tag">PAUSED</span>':"")+
           (due[id]?' <span class="tag b">DUE</span>':"")+'</b>'+
-        '<span>on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':'')+'</span></div>'+
+        '<span>'+(hold?esc(pauseLabel(x))
+                      :'on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':''))+'</span></div>'+
         '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>'+
         (due[id]?'<div class="acts"><button class="buy" data-mfrec="'+id+'">Record this month’s instalment</button></div>':"")+
+        (hold?'<div class="acts"><button class="buy" data-mfres="'+kind+':'+id+'">Resume it now</button></div>':"")+
         '</div>';}).join("")+'</div>'
     :'<p class="hint">None recorded.</p>')+
     (kind==="sip"&&rows.length?'<p class="hint" style="padding:0 4px">A SIP here is a record of your standing '+
       'instruction — the app never posts one for you. Record each instalment once it actually goes out, so the '+
       'units and your returns stay true.</p>':"")+
+    (nPaused?'<p class="hint" style="padding:0 4px">'+nPaused+(nPaused===1?' plan is':' plans are')+
+      ' paused — left out of the monthly total and never flagged as due. Money already invested is untouched, '+
+      'and a plan with a restart month picks itself back up on its own.</p>':"")+
     (pTot?'<p class="hint" style="padding:0 4px">Plus '+rupee(pTot)+' ∕ month on private funds, left out of the total above.</p>':"");
 }
 const ord=n=>n+(n%10===1&&n%100!==11?"st":n%10===2&&n%100!==12?"nd":n%10===3&&n%100!==13?"rd":"th");
@@ -1997,6 +2031,7 @@ function mfPlanSheet(kind,id){
   if(guestGuard()) return;
   if(id&&maskGuard()) return;
   const items=kind==="sip"?mfSips():mfSwps(), it=id?items[id]:null;
+  const hold=!!(it&&sipPaused(it));
   const F=Object.entries(mfunds());
   /* A plan may name a fund you do not hold yet - starting a SIP is usually the first thing
      that happens, before there are any units to record. Picking "not in my list yet" creates
@@ -2017,9 +2052,29 @@ function mfPlanSheet(kind,id){
     (kind==="swp"?'<div class="f"><label>Goes into (optional)</label><select id="pT"><option value="">— paid out as cash —</option>'+
       F.map(([k,f])=>'<option value="'+k+'"'+(it&&it.to===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
       '<p class="hint" style="margin-top:6px">Pick a fund when this SWP feeds a purchase there — the money moves between funds instead of coming to you.</p>':"")+
+    /* Pause is the honest middle ground between editing and deleting. Deleting throws away the
+       amount and the day, so restarting means typing it back from memory; pausing keeps the plan
+       and simply stops it counting - and, for a SIP, stops it being flagged as due every month
+       for money that was never going out. */
+    '<div class="togg full" id="pHoldT" style="margin-top:12px">'+
+      '<button aria-pressed="'+(!hold)+'" data-v="0">Running</button>'+
+      '<button aria-pressed="'+hold+'" data-v="1">Paused</button></div>'+
+    '<div id="pHoldBox" style="display:'+(hold?"block":"none")+'">'+
+      '<div class="f"><label>Restarts in</label><select id="pHM">'+
+        '<option value="">— nothing fixed, I’ll turn it back on —</option>'+
+        pauseMonthOpts(it&&typeof it.pause==="string"?it.pause:"")+'</select></div>'+
+      '<p class="hint" style="margin-top:6px">A paused plan drops out of your monthly total'+
+        (kind==="sip"?' and is never flagged as due':'')+'. Pick a month and it starts counting '+
+        'again by itself. Nothing already invested changes.</p>'+
+    '</div>'+
     '<div class="err" id="pErr"></div>'+
     '<button class="primary" id="pGo">'+(it?"Save":"Add")+'</button>'+
     (it?'<button class="ghost" id="pDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Stopped — remove</button>':""));
+  let hold2=hold;
+  $("#pHoldT").addEventListener("click",e=>{const b=e.target.closest("button"); if(!b) return;
+    hold2=b.dataset.v==="1";
+    $("#pHoldT").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    $("#pHoldBox").style.display=hold2?"block":"none";});
   const drawNPick=()=>{const el=$("#pNPick"); if(!el) return;
     el.innerHTML=npick?'<div class="picked"><span class="ok">✓</span> <b>'+esc(npick.name)+'</b>'+
       (npick.nav?'<span class="pl">NAV '+price(+npick.nav)+'</span>':"")+'</div>'
@@ -2065,7 +2120,11 @@ function mfPlanSheet(kind,id){
       if(isNew){ fid=uid();
         M.funds[fid]={name:nm,units:0,inv:0,
           ...(npick?{code:npick.code,...(npick.nav?{nav:npick.nav,navDate:npick.navDate}:{})}:{})}; }
-      const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day,...(to&&to!==fid?{to}:{})};
+      /* the record is rebuilt from scratch, so switching back to Running drops `pause` entirely
+         rather than leaving a stale month behind */
+      const pause=hold2?($("#pHM").value||1):null;
+      const k=id||uid();
+      M[kind==="sip"?"sips":"swps"][k]={fid,amt,day,...(to&&to!==fid?{to}:{}),...(pause?{pause}:{})};
     });
     mfSyncAt=0; closeSheet(); setTab("mf"); mfSyncNav();
   });
@@ -2377,6 +2436,12 @@ function bind(){
     b.addEventListener("click",()=>{const[k,id]=b.dataset.mfplan.split(":"); mfPlanSheet(k,id);}));
   document.querySelectorAll("[data-mfrec]").forEach(b=>
     b.addEventListener("click",e=>{e.stopPropagation(); mfRecordSheet(b.dataset.mfrec);}));
+  document.querySelectorAll("[data-mfres]").forEach(b=>
+    b.addEventListener("click",e=>{e.stopPropagation();
+      if(guestGuard()||maskGuard()) return;
+      const[k,id]=b.dataset.mfres.split(":");
+      mfWrite(M=>{const p=M[k==="sip"?"sips":"swps"][id]; if(p) delete p.pause;});
+      render();}));
   document.querySelectorAll("[data-mftx]").forEach(b=>
     b.addEventListener("click",()=>mfTxSheet(b.dataset.mftx)));
   document.querySelectorAll("[data-mfp]").forEach(b=>

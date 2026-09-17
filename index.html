@@ -242,6 +242,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .frow .a{width:104px;text-align:right;font-size:13px;font-weight:500}
 .mdet{border-top:1px solid var(--line2);background:var(--surface2);padding:2px 18px 8px}
 .fr{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
+.frb{display:block;width:100%;text-align:left}
 .fr:first-child{border-top:0}
 .fl{flex:1;min-width:0}
 .fn{font-size:13px;font-weight:600;display:flex;align-items:baseline;gap:6px;min-width:0}
@@ -445,7 +446,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v85";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v86";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1767,7 +1768,9 @@ function mfFundTxHTML(id){
     '<div class="ftot"><div class="ft1"><span>'+list.length+' transaction'+(list.length===1?"":"s")+'</span>'+
       '<b class="mono '+cls(out-inn)+'">'+smoney(out-inn)+'</b></div>'+
     '<div class="ft2"><span class="mono">−'+rupee(inn)+'</span> in · <span class="mono gain">+'+rupee(out)+'</span> out</div></div>'+
-    (list.length?'<div class="elist" style="padding:2px 16px">'+list.map(([,t])=>mfTxRow(t,false)).join("")+'</div>'
+    (list.length?'<div class="elist" style="padding:2px 16px">'+list.map(([k,t])=>
+        '<button class="frb" data-mftxe="'+k+'">'+mfTxRow(t,false)+'</button>').join("")+'</div>'+
+      '<p class="hint" style="padding:0 16px 6px">Tap an entry to correct or remove it.</p>'
       :'<p class="hint">No transactions in this period.</p>')+
     '<div class="acts" style="padding:0 4px 6px"><button data-mfedit="'+id+'">Edit fund</button>'+
       '<button data-mfred="'+id+'">Redeem / withdraw</button></div></div>';
@@ -1945,7 +1948,7 @@ async function mfFillTxNavs(){
    refetches and overwrites the NAV; a hand-typed NAV stays put until the date changes again
    (programmatic fills do not fire 'input', so only real typing sets the dirty flag). A fund
    with no scheme code keeps the old behaviour - last synced NAV, hand-editable. */
-function mfNavAuto(code,dSel,nSel,hSel,after){
+function mfNavAuto(code,dSel,nSel,hSel,after,noInit){
   if(!code) return;
   const dEl=$(dSel), nEl=$(nSel), note=t=>{const h=$(hSel); if(h) h.textContent=t;};
   let seq=0, dirty=false;
@@ -1963,7 +1966,7 @@ function mfNavAuto(code,dSel,nSel,hSel,after){
     else note("Couldn\u2019t look the price up \u2014 check it against the AMC\u2019s confirmation.");
   };
   dEl.addEventListener("change",()=>look(true));
-  look(false);
+  if(!noInit) look(false);
 }
 /* One instalment, confirmed rather than assumed. Everything is pre-filled - the amount from the
    plan, the date from the plan's own day this month, the NAV from the last refresh - but all
@@ -2284,6 +2287,94 @@ function mfPlanSheet(kind,id){
     closeSheet(); setTab("mf");
   });
 }
+/* Pure maths for correcting a recorded instalment ('sip') or payout ('swp'): rewind the old
+   entry from the fund state, then optionally apply an edited one. Rewinding a payout restores
+   cost at the CURRENT average per unit - identical to the average at record time unless money
+   moved at a different price in between, because a redemption never changes the average. On a
+   fund already at zero the old NAV stands in (a zero-gain assumption; the sheet says so).
+   Returns null when the fund cannot absorb the change (units would go below zero). */
+function mfTxRemath(kind,U,I,oldAmt,navOld,edit){
+  if(!(navOld>0)||!(oldAmt>0)) return null;
+  const u0=oldAmt/navOld;
+  let u,i;
+  if(kind==="sip"){ u=U-u0; i=I-oldAmt; }
+  else{ const avg=U>0.001?I/U:navOld; u=U+u0; i=I+u0*avg; }
+  if(u<-0.001) return null;
+  u=Math.max(0,u); i=Math.max(0,i);
+  if(u<0.001){ u=0; i=0; }
+  if(edit){
+    const a2=+edit.amt, n2=+edit.nav;
+    if(!(a2>0)||!(n2>0)) return null;
+    if(kind==="sip"){ u+=a2/n2; i+=a2; }
+    else{ let un=a2/n2; if(un>u*1.0001) return null; if(un>u) un=u;
+          const avg2=u>0?i/u:0; u-=un; i-=un*avg2; if(u<0.001){u=0;i=0;} }
+  }
+  return {u:+u.toFixed(4),i:Math.round(i)};
+}
+/* Edit or remove a RECORDED instalment/payout - the entries that moved units. An old tx with
+   no stored nav gets that day's price looked up so the rewind uses what the entry actually
+   did; failing that, the NAV box's value stands in. Kind is not editable - a SIP stays a SIP. */
+function mfTxUnitSheet(id){
+  if(guestGuard()) return;
+  if(maskGuard()) return;
+  const t0=mfTxs()[id]; if(!t0) return;
+  if(!(t0.kind==="sip"||t0.kind==="swp")) return mfTxSheet(id);
+  const f=mfunds()[t0.fid]; if(!f) return;
+  const isSip=t0.kind==="sip";
+  const U=+f.units||0, I=+f.inv||0;
+  let navOld=+t0.nav>0?+t0.nav:0;
+  openSheet(isSip?"Edit instalment":"Edit payout",
+    '<p class="hint" style="margin-top:4px"><b style="color:var(--ink)">'+esc(f.name)+'</b> \u00b7 '+
+      (isSip?'money in on ':'payout on ')+esc(t0.date||"")+'. Fixing it here puts the units and the cost right too.</p>'+
+    '<div class="f2"><div class="f"><label>Amount</label><input id="euA" class="mono" inputmode="decimal" value="'+(+t0.amt||0)+'"></div>'+
+    '<div class="f"><label>Date</label><input id="euD" type="date" value="'+esc(t0.date||today())+'"></div></div>'+
+    '<div class="f"><label>NAV</label><input id="euN" class="mono" inputmode="decimal" value="'+(navOld||+f.nav||"")+'"></div>'+
+    '<div class="hint" id="euNavH" style="margin-top:2px"></div>'+
+    '<div class="hint" id="euPrev" style="margin-top:2px"></div>'+
+    '<div class="err" id="euErr"></div>'+
+    '<button class="primary" id="euGo">Save the correction</button>'+
+    '<button class="ghost" id="euDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Remove this entry</button>');
+  const prev=()=>{
+    const el=$("#euPrev"); if(!el) return;
+    const a=parseFloat($("#euA").value), n=parseFloat($("#euN").value);
+    if(!(a>0)||!(n>0)){ el.innerHTML="Enter the amount and the NAV."; return; }
+    const e=mfTxRemath(t0.kind,U,I,+t0.amt||0,navOld||n,{amt:a,nav:n});
+    el.innerHTML=e?'The fund goes from <b>'+qfmt(U,3)+'</b> units \u00b7 cost '+rupee(I)+
+        ' to <b>'+qfmt(e.u,3)+'</b> units \u00b7 cost '+rupee(e.i)+'.'
+      :'That doesn\u2019t fit what the fund holds \u2014 the units would go below zero.';
+  };
+  prev();
+  ["#euA","#euN"].forEach(sel=>$(sel).addEventListener("input",prev));
+  mfNavAuto(f.code,"#euD","#euN","#euNavH",prev,true);
+  if(!navOld&&f.code&&t0.date)
+    mfNavOn(f.code,t0.date).then(r=>{ if(r){ navOld=r.nav;
+      const h=$("#euNavH"); if(h) h.textContent="This entry was saved without its price \u2014 unwinding it uses "+price(r.nav)+", the official one for its day.";
+      prev(); } });
+  $("#euGo").addEventListener("click",()=>{
+    const a=parseFloat($("#euA").value), n=parseFloat($("#euN").value), d=$("#euD").value;
+    if(!(a>0)||!(n>0)) return showErr("#euErr","Amount and NAV are both needed.");
+    if(!d) return showErr("#euErr","Pick the date.");
+    const e=mfTxRemath(t0.kind,U,I,+t0.amt||0,navOld||n,{amt:a,nav:n});
+    if(!e) return showErr("#euErr","That doesn\u2019t fit what the fund holds \u2014 the units would go below zero.");
+    mfWrite(M=>{
+      const g=M.funds[t0.fid]; if(!g) return;
+      g.units=e.u; g.inv=e.i;
+      M.txs[id]={fid:t0.fid,kind:t0.kind,amt:Math.round(a),nav:n,date:d,...(t0.pid?{pid:t0.pid}:{})};
+    });
+    closeSheet(); setTab("mf");
+  });
+  $("#euDel").addEventListener("click",ev=>{
+    const b=ev.currentTarget;
+    const n=parseFloat($("#euN").value);
+    const e=mfTxRemath(t0.kind,U,I,+t0.amt||0,navOld||(n>0?n:+f.nav||0),null);
+    if(!e) return showErr("#euErr","This can\u2019t be unwound \u2014 the fund no longer holds these units. Use Edit fund to fix the numbers by hand.");
+    if(b.dataset.armed!=="1"){ b.dataset.armed="1";
+      b.textContent="Sure? Fund goes back to "+qfmt(e.u,3)+" units";
+      setTimeout(()=>{b.dataset.armed="";b.textContent="Remove this entry";},3000); return; }
+    mfWrite(M=>{ const g=M.funds[t0.fid]; if(g){ g.units=e.u; g.inv=e.i; } delete M.txs[id]; });
+    closeSheet(); setTab("mf");
+  });
+}
 function mfTxSheet(id){
   if(guestGuard()) return;
   if(id&&maskGuard()) return;
@@ -2594,6 +2685,10 @@ function bind(){
       render();}));
   document.querySelectorAll("[data-mftx]").forEach(b=>
     b.addEventListener("click",()=>mfTxSheet(b.dataset.mftx)));
+  document.querySelectorAll("[data-mftxe]").forEach(b=>
+    b.addEventListener("click",()=>{const t=mfTxs()[b.dataset.mftxe];
+      if(t&&(t.kind==="sip"||t.kind==="swp")) mfTxUnitSheet(b.dataset.mftxe);
+      else mfTxSheet(b.dataset.mftxe);}));
   document.querySelectorAll("[data-mfp]").forEach(b=>
     b.addEventListener("click",()=>{mfPeriod=b.dataset.mfp; render();}));
   document.querySelectorAll("[data-mcus]").forEach(sl=>

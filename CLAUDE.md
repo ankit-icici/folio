@@ -402,6 +402,26 @@ meta.mf = {
   stored nav shows no NAV line at all rather than a permanent dash. Lumpsum-tab rows
   (`showFund=true`) are untouched. NAV display goes through `price()`, so the privacy shutter
   masks it like every other figure.
+- **A recorded instalment/payout can be corrected or removed (v86).** Fund-ledger rows are now
+  buttons (`data-mftxe`): `in`/`out` rows open the plain diary editor (`mfTxSheet`, unchanged -
+  it still never moves units), `sip`/`swp` rows open `mfTxUnitSheet`, which DOES move units.
+  - The maths is the pure `mfTxRemath(kind,U,I,oldAmt,navOld,edit)`: rewind the old entry from
+    today's fund state, then apply the edited one (`edit:null` = delete). Proven properties
+    (12 node cases): delete restores the pre-record state exactly; edit ends exactly where
+    recording the corrected figures would have; anything that would push units below zero
+    returns null and the sheet refuses with a plain message.
+  - Why a payout rewind may only be near-exact: it restores cost at the fund's CURRENT average
+    per unit. A redemption never changes the average, so this is exact unless a purchase at a
+    different price landed in between. A fund already at 0/0 falls back to the old NAV (a
+    zero-gain stand-in) - the realistic case is undoing a just-recorded entry, where both are
+    exact. Do not "fix" this by storing released cost on the tx without also handling the
+    interim-purchase case; the approximation is deliberate and stated.
+  - An old tx with no stored `nav` gets its day's official price looked up (`mfNavOn`) so the
+    rewind matches what the entry actually did; the sheet says it is doing so.
+  - `mfNavAuto` grew a `noInit` flag: the edit sheet must open showing the NAV the entry WAS
+    recorded at, not today's price - the date box still refetches on change.
+  - Kind is not editable (a SIP stays a SIP); `pid` survives the rewrite, so the due-flags stay
+    truthful - deleting this month's entry re-flags the plan as DUE, which is correct.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

@@ -436,7 +436,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v77";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v78";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -737,8 +737,26 @@ function totals(list){
   t.dayPct=t.prevVal>0?t.day/t.prevVal*100:0;
   return t;
 }
-const all=()=>Object.keys(stocks).filter(id=>!stocks[id].closed).map(id=>({id,s:stocks[id],h:holding(id)}))
+/* all() is LIVE holdings only. A position sold down to nothing drops out of the listing by
+   itself - its txns stay put, so Flows and the lifetime return keep counting it. That is the
+   whole point: deleting the stock to tidy the list would also delete those trades from Flows.
+   exited() picks the sold-out ones up so they still have somewhere to be seen. */
+const LIVEQ=1e-9;
+const withHolding=()=>Object.keys(stocks).filter(id=>!stocks[id].closed)
+  .map(id=>({id,s:stocks[id],h:holding(id)}));
+const all=()=>withHolding().filter(x=>x.h.qty>LIVEQ)
   .sort((a,b)=>b.h.cur-a.h.cur||a.s.name.localeCompare(b.s.name));
+const exited=()=>withHolding().filter(x=>x.h.qty<=LIVEQ&&stockTxns(x.id).some(t=>!t.noLot))
+  .sort((a,b)=>a.s.name.localeCompare(b.s.name));
+/* Realised money on a position: what came back out, less what went in. Mirrors holding() in
+   skipping noLot rows, so an imported flow-only record never invents a gain. */
+function realised(sid){
+  let inn=0,out=0;
+  for(const t of stockTxns(sid)){ if(t.noLot) continue;
+    const v=(+t.qty||0)*(+t.price||0);
+    if(t.side==="sell") out+=v; else inn+=v; }
+  return {inn,out,net:out-inn,pct:inn>0?(out-inn)/inn*100:0};
+}
 
 /* Complete cash-flow history across all broker accounts (imported ledger) plus any
    trades recorded in the app after the ledger ends. Holdings come from stocks/txns;
@@ -893,6 +911,7 @@ function renderHeroOnly(){
 }
 function render(){
   const list=all(), core=list.filter(x=>x.s.pool!=="ipo"), ipo=list.filter(x=>x.s.pool==="ipo");
+  const gone=exited(), goneCore=gone.filter(x=>x.s.pool!=="ipo"), goneIpo=gone.filter(x=>x.s.pool==="ipo");
   const h=$("#hero"); if(!h) return;
   const v=view();
   document.querySelectorAll("#seg button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===v?"true":"false"));
@@ -917,9 +936,15 @@ function render(){
     else if(sortBy==="day") set=[...set].sort((a,b)=>b.h.dayPct-a.h.dayPct);
     const sorter='<div class="chips" style="margin-top:14px">'+[["inv","Value"],["name","A–Z"],["day","Day %"]].map(o=>
       '<button aria-pressed="'+(sortBy===o[0])+'" data-sort="'+o[0]+'">'+o[1]+'</button>').join("")+"</div>";
+    const out=tab==="ipo"?goneIpo:goneCore;
+    const exitBlock=out.length?'<div class="secthead" style="margin-top:20px">Exited · fully sold</div>'+
+      '<div class="list" style="margin-top:10px">'+out.map(exitCardHTML).join("")+'</div>'+
+      '<p class="hint" style="padding:0 4px">Nothing left in these, so they are out of your holdings, your allocation and the rebalance plan. '+
+      'They still count in Flows and your lifetime return — deleting one would take its trades out of both.</p>':"";
     if(!ready) c.innerHTML='<div class="empty">Loading…</div>';
-    else if(!set.length) c.innerHTML='<div class="empty"><b>'+(tab==="ipo"?"No "+POOL2.toLowerCase()+" holdings":"No holdings yet")+'</b>Tap + to add or import.</div>';
-    else c.innerHTML=sorter+'<div class="list" style="margin-top:12px">'+set.map(x=>cardHTML(x,coreInv)).join("")+"</div>";
+    else if(!set.length&&!out.length) c.innerHTML='<div class="empty"><b>'+(tab==="ipo"?"No "+POOL2.toLowerCase()+" holdings":"No holdings yet")+'</b>Tap + to add or import.</div>';
+    else if(!set.length) c.innerHTML='<div class="empty"><b>Nothing held right now</b>Everything here has been sold.</div>'+exitBlock;
+    else c.innerHTML=sorter+'<div class="list" style="margin-top:12px">'+set.map(x=>cardHTML(x,coreInv)).join("")+"</div>"+exitBlock;
   }
   bind();
 }
@@ -978,6 +1003,24 @@ function cardHTML(x,coreInv){
       '<button class="sell" data-act="sell">Sell</button>'+
       '<button data-act="hist">Edit</button>'+
       '<button class="danger" data-act="del">Delete</button>'+
+    '</div></div>';
+}
+/* A sold-out position. No Delete here on purpose: removing it would take its trades out of
+   Flows and the lifetime return with it, which is exactly what this group exists to avoid. */
+function exitCardHTML(x){
+  const {s,id}=x, r=realised(id);
+  return '<div class="card" data-id="'+id+'">'+
+    '<div class="chead"><div class="t">'+esc(s.name)+'</div>'+
+      symHTML(s.symbol)+'<span class="tag">EXITED</span><span class="sp"></span></div>'+
+    '<div class="g9 mono">'+
+      kv("Total bought",rupee(r.inn))+
+      kv("Total sold",rupee(r.out))+
+      kv("Realised P&L",'<span class="'+cls(r.net)+'">'+smoney(r.net)+'</span>',1)+
+      kv("Return",'<span class="'+cls(r.net)+'">'+spct(r.pct)+'</span>')+
+    '</div>'+
+    '<div class="acts">'+
+      '<button class="buy" data-act="buy">Buy again</button>'+
+      '<button data-act="hist">Edit</button>'+
     '</div></div>';
 }
 
@@ -1708,9 +1751,13 @@ function mfChipsHTML(){
     (mfPeriod==="cus"?mfCustomHTML():"");
 }
 function mfPortHTML(){
-  const F=Object.entries(mfunds()).filter(([,f])=>(+f.units||0)>0);
   const TX=Object.values(mfTxs());
-  const CL=Object.entries(mfunds()).filter(([id,f])=>!((+f.units||0)>0)&&TX.some(t=>t.fid===id));
+  /* A fund you have only just set a SIP on holds no units yet. It still belongs in the live
+     list - without this it would fall through both filters and not appear at all, or get
+     filed under "fully redeemed" as though you had exited something you never held. */
+  const planned=id=>Object.values(mfSips()).some(p=>p.fid===id)||Object.values(mfSwps()).some(p=>p.fid===id);
+  const F=Object.entries(mfunds()).filter(([id,f])=>(+f.units||0)>0||planned(id));
+  const CL=Object.entries(mfunds()).filter(([id,f])=>!((+f.units||0)>0)&&!planned(id)&&TX.some(t=>t.fid===id));
   if(!F.length&&!CL.length) return '<div class="empty"><b>No mutual funds yet</b>Tap + to add one.</div>';
   const card=([id,f])=>{
     const u=+f.units||0,nav=+f.nav||0,cur=u*nav,inv=+f.inv||0,pl=cur-inv;
@@ -1853,10 +1900,20 @@ function mfPlanSheet(kind,id){
   if(id&&maskGuard()) return;
   const items=kind==="sip"?mfSips():mfSwps(), it=id?items[id]:null;
   const F=Object.entries(mfunds());
-  if(!F.length){ openSheet("Add "+kind.toUpperCase(),'<p class="hint">Add a fund first.</p>'); return; }
+  /* A plan may name a fund you do not hold yet - starting a SIP is usually the first thing
+     that happens, before there are any units to record. Picking "not in my list yet" creates
+     the fund at 0 units alongside the plan, so nothing has to be faked to get past this sheet. */
+  const startNew=!F.length;
+  let npick=null;
   openSheet(it?"Edit "+kind.toUpperCase():"Add "+kind.toUpperCase(),
     '<div class="f"><label>Fund</label><select id="pF">'+F.map(([k,f])=>
-      '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+'</select></div>'+
+      '<option value="'+k+'"'+(it&&it.fid===k?" selected":"")+'>'+esc(f.name)+'</option>').join("")+
+      '<option value="__new"'+(startNew?" selected":"")+'>+ A fund not in my list yet</option></select></div>'+
+    '<div id="pNew" style="display:'+(startNew?"block":"none")+'">'+
+      '<div class="f"><label>New fund name</label><input id="pNName" placeholder="Start typing a fund name" autocomplete="off"></div>'+
+      '<div id="pNPick"></div><div id="pNSug"></div>'+
+      '<p class="hint" style="margin-top:6px">It joins your funds with no units yet — record those once the first instalment lands.</p>'+
+    '</div>'+
     '<div class="f2"><div class="f"><label>Amount per month</label><input id="pA" class="mono" inputmode="decimal" value="'+(it?it.amt:"")+'"></div>'+
     '<div class="f"><label>Day of month</label><input id="pD" class="mono" inputmode="numeric" value="'+(it?it.day:"")+'"></div></div>'+
     (kind==="swp"?'<div class="f"><label>Goes into (optional)</label><select id="pT"><option value="">— paid out as cash —</option>'+
@@ -1865,12 +1922,54 @@ function mfPlanSheet(kind,id){
     '<div class="err" id="pErr"></div>'+
     '<button class="primary" id="pGo">'+(it?"Save":"Add")+'</button>'+
     (it?'<button class="ghost" id="pDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Stopped — remove</button>':""));
+  const drawNPick=()=>{const el=$("#pNPick"); if(!el) return;
+    el.innerHTML=npick?'<div class="picked"><span class="ok">✓</span> <b>'+esc(npick.name)+'</b>'+
+      (npick.nav?'<span class="pl">NAV '+price(+npick.nav)+'</span>':"")+'</div>'
+      :(($("#pNName")&&$("#pNName").value.trim())?'<div class="picked no">No scheme picked — NAV stays manual</div>':"");};
+  $("#pF").addEventListener("change",()=>{
+    const isNew=$("#pF").value==="__new";
+    $("#pNew").style.display=isNew?"block":"none";
+    if(!isNew){ npick=null; $("#pNSug").innerHTML=""; drawNPick(); }
+  });
+  $("#pNName").addEventListener("input",()=>{
+    const q=$("#pNName").value.trim();
+    clearTimeout(mfTimer); mfSeq++; npick=null; drawNPick(); $("#pNSug").innerHTML="";
+    if(q.length<3) return;
+    $("#pNSug").innerHTML='<p class="hint">Looking up…</p>';
+    mfTimer=setTimeout(async()=>{
+      const mine=++mfSeq;
+      try{
+        const j=await fetch("https://api.mfapi.in/mf/search?q="+encodeURIComponent(q)).then(r=>r.json());
+        if(mine!==mfSeq) return;
+        const lst=(j||[]).slice(0,6);
+        $("#pNSug").innerHTML=lst.length?'<div class="sug">'+lst.map(r=>
+          '<button class="sugr" data-pnc="'+r.schemeCode+'" data-pnn="'+esc(r.schemeName)+'">'+
+          '<span class="nw">'+esc(r.schemeName)+'</span></button>').join("")+'</div>'
+          :'<p class="hint">Nothing found — the name you typed is kept as-is.</p>';
+        document.querySelectorAll("[data-pnc]").forEach(b=>b.addEventListener("click",async()=>{
+          npick={code:+b.dataset.pnc,name:b.dataset.pnn,nav:0};
+          $("#pNName").value=npick.name; $("#pNSug").innerHTML=""; drawNPick();
+          try{ const jj=await fetch("https://api.mfapi.in/mf/"+npick.code+"/latest").then(r=>r.json());
+            const row=(jj.data||[])[0]; if(row){ npick.nav=parseFloat(row.nav); npick.navDate=row.date; drawNPick(); } }catch(e){}
+        }));
+      }catch(e){ if(mine===mfSeq) $("#pNSug").innerHTML='<p class="hint">Couldn’t reach the NAV service — the name you typed is kept.</p>'; }
+    },350);
+  });
   $("#pGo").addEventListener("click",()=>{
-    const fid=$("#pF").value, amt=parseFloat($("#pA").value), day=parseInt($("#pD").value,10);
+    let fid=$("#pF").value;
+    const amt=parseFloat($("#pA").value), day=parseInt($("#pD").value,10);
+    const isNew=fid==="__new";
+    const nm=isNew?(npick?npick.name:($("#pNName").value||"").trim()):"";
+    if(isNew&&!nm) return showErr("#pErr","Name the new fund, or pick one from your list.");
     if(!fid||!(amt>0)||!(day>=1&&day<=31)) return showErr("#pErr","Fund, monthly amount and a day 1–31 are required.");
     const to=kind==="swp"&&$("#pT")?$("#pT").value:"";
-    mfWrite(M=>{ const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day,...(to?{to}:{})}; });
-    closeSheet(); setTab("mf");
+    mfWrite(M=>{
+      if(isNew){ fid=uid();
+        M.funds[fid]={name:nm,units:0,inv:0,
+          ...(npick?{code:npick.code,...(npick.nav?{nav:npick.nav,navDate:npick.navDate}:{})}:{})}; }
+      const k=id||uid(); M[kind==="sip"?"sips":"swps"][k]={fid,amt,day,...(to&&to!==fid?{to}:{})};
+    });
+    mfSyncAt=0; closeSheet(); setTab("mf"); mfSyncNav();
   });
   const del=$("#pDel");
   if(del) del.addEventListener("click",e=>{
@@ -2033,7 +2132,9 @@ function mfSheet(id){
   $("#mGo").addEventListener("click",()=>{
     const name=pick?pick.name:$("#mName").value.trim();
     const u=parseFloat($("#mU").value), inv=parseFloat($("#mI").value), who=$("#mW").value.trim();
-    if(!name||!(u>0)||!(inv>=0)) return showErr("#mErr","Fund, units and amount invested are required.");
+    /* units may legitimately be 0 - a fund whose SIP has not bought yet, or one fully
+       redeemed. Blank still fails, because parseFloat("") is NaN and NaN>=0 is false. */
+    if(!name||!(u>=0)||!(inv>=0)) return showErr("#mErr","Fund, units and amount invested are required — put 0 in units if the SIP hasn’t bought any yet.");
     mfWrite(M=>{const k=id||uid(); const old=M.funds[k]||{};
       M.funds[k]={...old,name,units:u,inv,who:who||undefined,priv:priv?1:undefined,
         ...(pick?{code:pick.code,...(pick.nav?{nav:pick.nav,navDate:pick.navDate||old.navDate}:{})}:{})};});

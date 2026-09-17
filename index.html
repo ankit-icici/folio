@@ -444,7 +444,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v79";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v80";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -937,7 +937,10 @@ function render(){
     [["core","Core"],["ipo",POOL2],["flows","Flows"],["plan","Plan"]].map(o=>
       '<button role="tab" aria-selected="'+(tab===o[0])+'" data-stab="'+o[0]+'">'+o[1]+'</button>').join("")+'</nav>'
     :(v==="mf"?'<nav class="seg sub" role="tablist">'+
-    [["port","Portfolio"],["sip","SIPs"],["swp","SWPs"],["tx","Lumpsum"]].map(o=>
+    /* the SIPs tab carries the count of unrecorded instalments, so the nudge is visible
+       from the Funds tab without having to go looking for it */
+    [["port","Portfolio"],["sip","SIPs"+(sipDue().length?" ("+sipDue().length+")":"")],
+     ["swp","SWPs"],["tx","Lumpsum"]].map(o=>
       '<button role="tab" aria-selected="'+(mfTab===o[0])+'" data-mtab="'+o[0]+'">'+o[1]+'</button>').join("")+'</nav>':"");
   h.innerHTML=v==="home"?homeHeroHTML(totals(list)):(v==="stocks"?heroHTML(totals(list)):(v==="mf"?mfHeroHTML():""));
   renderIdx(); renderNudge(); syncSegOffset();
@@ -1842,22 +1845,100 @@ function mfTxOnlyHTML(){
 
 
 /* standing instructions - shown, not executed: the AMC moves the money, this records it */
+/* A SIP is only a standing instruction - NOTHING in the app posts it. Left alone, the units and
+   the invested amount stay frozen while real money keeps going in, so the fund reads low and its
+   CAGR (which is computed purely from txs) drifts wrong. sipDue() flags the plans whose day has
+   come and gone this month with no money recorded against that fund yet.
+   'in' counts as well as 'sip': a lumpsum logged this month is money already accounted for, and
+   nagging about it anyway would just train the owner to ignore the flag. Dates come from the
+   app's own today(), so "has the day passed" agrees with every other date the app shows. */
+function sipDue(){
+  const t=today(), ym=t.slice(0,7), dom=+t.slice(8,10);
+  const F=mfunds(), TX=Object.values(mfTxs()), out=[];
+  for(const [id,s] of Object.entries(mfSips())){
+    const f=F[s.fid]; if(!f) continue;
+    if((+s.day||1)>dom) continue;                    /* not due yet this month */
+    if(TX.some(t2=>t2.fid===s.fid&&(t2.kind==="sip"||t2.kind==="in")&&
+                   String(t2.date||"").slice(0,7)===ym)) continue;
+    out.push({id,s,f});
+  }
+  return out;
+}
+const sipDueIds=()=>{const m={}; for(const d of sipDue()) m[d.id]=1; return m;};
+/* One instalment, confirmed rather than assumed. Everything is pre-filled - the amount from the
+   plan, the date from the plan's own day this month, the NAV from the last refresh - but all
+   three stay editable, because an instalment can bounce, be paused, or buy at a NAV that is not
+   today's. The app never invents a transaction; this just makes saying "yes it went through"
+   one screen instead of hand-editing the fund. */
+function mfRecordSheet(id){
+  if(guestGuard()) return;
+  if(maskGuard()) return;
+  const s=mfSips()[id]; if(!s) return;
+  const f=mfunds()[s.fid]; if(!f) return;
+  const t=today(), day=Math.min(Math.max(1,+s.day||1),28);
+  const d0=t.slice(0,7)+"-"+String(day).padStart(2,"0");
+  openSheet("Record instalment",
+    '<p class="hint" style="margin-top:4px">Into <b style="color:var(--ink)">'+esc(f.name)+'</b>. '+
+      'This adds the money to your returns and the units to the fund.</p>'+
+    '<div class="f2"><div class="f"><label>Amount</label><input id="riA" class="mono" inputmode="decimal" value="'+(+s.amt||0)+'"></div>'+
+    '<div class="f"><label>Date</label><input id="riD" type="date" value="'+esc(d0)+'"></div></div>'+
+    '<div class="f"><label>NAV it bought at</label><input id="riN" class="mono" inputmode="decimal" value="'+(+f.nav||0)+'"></div>'+
+    '<div class="hint" id="riPrev" style="margin-top:2px"></div>'+
+    '<div class="err" id="riErr"></div>'+
+    '<button class="primary" id="riGo">Record it</button>');
+  const prev=()=>{
+    const a=parseFloat($("#riA").value), n=parseFloat($("#riN").value);
+    $("#riPrev").innerHTML=(a>0&&n>0)
+      ? "Adds <b>"+qfmt(a/n,3)+"</b> units at "+price(n)+", taking the fund to <b>"+
+        qfmt((+f.units||0)+a/n,3)+"</b> units."
+      : "Enter the amount and the NAV to see the units this buys.";
+  };
+  prev();
+  ["#riA","#riN"].forEach(sel=>$(sel).addEventListener("input",prev));
+  $("#riGo").addEventListener("click",()=>{
+    const amt=parseFloat($("#riA").value), nav=parseFloat($("#riN").value), d=$("#riD").value;
+    if(!(amt>0)) return showErr("#riErr","Enter the amount that went in.");
+    if(!(nav>0)) return showErr("#riErr","Enter the NAV it bought at — without it the units cannot be worked out.");
+    if(!d) return showErr("#riErr","Pick the date the instalment went out.");
+    mfWrite(M=>{
+      const g=M.funds[s.fid]; if(!g) return;
+      g.units=+(((+g.units||0)+amt/nav).toFixed(4));
+      g.inv=Math.round((+g.inv||0)+amt);
+      M.txs[uid()]={fid:s.fid,kind:"sip",amt:Math.round(amt),date:d};
+    });
+    closeSheet(); setTab("mf");
+  });
+}
 function mfPlansHTML(kind){
   const F=mfunds(), items=kind==="sip"?mfSips():mfSwps();
   const rows=Object.entries(items).sort((a,b)=>(+a[1].day||0)-(+b[1].day||0));
   const cnt=([,x])=>{const f=F[x.fid]; return f?mfCounted(f):true;};
   const tot=rows.filter(cnt).reduce((a,[,x])=>a+(+x.amt||0),0);
   const pTot=rows.filter(r=>!cnt(r)).reduce((a,[,x])=>a+(+x.amt||0),0);
+  /* only SIPs can be "due" - an SWP pays out, there is nothing to record on this screen */
+  const due=kind==="sip"?sipDueIds():{};
+  const nDue=Object.keys(due).length;
   return '<div class="secthead rh">Active '+kind.toUpperCase()+'s'+(tot?' · '+rupee(tot)+' ∕ month':'')+
     '<button class="linky" data-mfadd="'+kind+'">Add '+kind.toUpperCase()+'</button></div>'+
+    (nDue?'<p class="hint due" style="padding:8px 12px;margin-top:10px;border-radius:12px;'+
+      'background:var(--gold-soft);color:var(--gold)"><b>'+nDue+(nDue===1?' instalment':' instalments')+
+      ' not recorded yet this month.</b> Until you record one, the fund keeps its old units and its '+
+      'return is worked out without that money.</p>':"")+
     (rows.length?'<div class="elist">'+rows.map(([id,x])=>{
       const f=F[x.fid]||{name:"?"}, t=x.to&&F[x.to];
-      return '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
+      return '<div>'+
+        '<button class="ertop" data-mfplan="'+kind+':'+id+'">'+
         '<div class="el"><b>'+esc(f.name)+(t?' <em class="into">→ '+esc(t.name)+'</em>':"")+
-          (mfPrivate(f)?' <span class="tag s">PRIVATE</span>':"")+'</b>'+
+          (mfPrivate(f)?' <span class="tag s">PRIVATE</span>':"")+
+          (due[id]?' <span class="tag b">DUE</span>':"")+'</b>'+
         '<span>on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':'')+'</span></div>'+
-        '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>';}).join("")+'</div>'
+        '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>'+
+        (due[id]?'<div class="acts"><button class="buy" data-mfrec="'+id+'">Record this month’s instalment</button></div>':"")+
+        '</div>';}).join("")+'</div>'
     :'<p class="hint">None recorded.</p>')+
+    (kind==="sip"&&rows.length?'<p class="hint" style="padding:0 4px">A SIP here is a record of your standing '+
+      'instruction — the app never posts one for you. Record each instalment once it actually goes out, so the '+
+      'units and your returns stay true.</p>':"")+
     (pTot?'<p class="hint" style="padding:0 4px">Plus '+rupee(pTot)+' ∕ month on private funds, left out of the total above.</p>':"");
 }
 const ord=n=>n+(n%10===1&&n%100!==11?"st":n%10===2&&n%100!==12?"nd":n%10===3&&n%100!==13?"rd":"th");
@@ -2294,6 +2375,8 @@ function bind(){
     b.addEventListener("click",()=>{const k=b.dataset.mfadd; k==="tx"?mfTxSheet():mfPlanSheet(k);}));
   document.querySelectorAll("[data-mfplan]").forEach(b=>
     b.addEventListener("click",()=>{const[k,id]=b.dataset.mfplan.split(":"); mfPlanSheet(k,id);}));
+  document.querySelectorAll("[data-mfrec]").forEach(b=>
+    b.addEventListener("click",e=>{e.stopPropagation(); mfRecordSheet(b.dataset.mfrec);}));
   document.querySelectorAll("[data-mftx]").forEach(b=>
     b.addEventListener("click",()=>mfTxSheet(b.dataset.mftx)));
   document.querySelectorAll("[data-mfp]").forEach(b=>

@@ -305,6 +305,23 @@ meta.mf = {
   `units > 0 || planned(id)` and the Closed group on `units <= 0 && !planned(id) && has txs`.
   Without the `planned` test a brand-new SIP fund falls through **both** filters and does not
   render at all, or worse lands under "Closed · fully redeemed" as an exit that never happened.
+- **A SIP is a standing instruction, not a feed. Nothing posts it (v80).** There is no scheduler
+  anywhere - `meta.mf.sips` only records fund / amount / day, and the screen totals it as
+  "₹X ∕ month". Left alone, `units` and `inv` stay frozen while real money goes in, so the fund
+  reads low **and** its CAGR is wrong, because `mfFundCagr()` is computed purely from `txs`.
+  - `sipDue()` flags plans whose `day` has passed this month with no money-in (`sip` **or** `in`)
+    recorded against that fund in the current month. `in` counts deliberately: a lumpsum logged
+    this month is money already accounted for, and nagging anyway trains the flag away. Surfaced
+    three ways - a count on the Funds **SIPs** sub-tab, a gold banner, and a `DUE` tag per row.
+  - `mfRecordSheet(id)` writes the instalment: `txs[…]={kind:'sip'}` **plus** `units += amt/nav`
+    and `inv += amt`, in one `mfWrite`. It is the only thing that writes `kind:'sip'`.
+  - **It confirms rather than assumes.** Amount, date and NAV are pre-filled (from the plan, the
+    plan's own day this month, and the last NAV sync) but all stay editable, because an
+    instalment can bounce, be paused, or buy at a NAV that is not today's. Do not "simplify" this
+    into a silent one-tap post - the app must never invent a transaction.
+  - Dates come from the app's own `today()`, so "has the day passed" agrees with every other date
+    the app prints. The sheet clamps the pre-filled day to 28 so a short month cannot produce an
+    invalid date.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

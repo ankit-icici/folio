@@ -328,6 +328,12 @@ Advisor: ⚙ Account -> *Advisor access* -> set a new PIN (replaces the old imme
 data and snapshots intact under the new PIN, advisor unaffected by an owner PIN change, old
 advisor locked out the moment a new advisor PIN is set, and revoke locks out everyone.
 
+**Confirmed on the LIVE account, 2026-09-17** - the owner rotated their own PIN and reported the
+portfolio rendering normally *and* ⚙ Account -> *Go back to an earlier version* still listing the
+old snapshots. That is the `sha(user:pin)` rename of the data file **and** of every `snap-`/`keep-`
+file working on real data, not just on a throwaway. Tell the owner to save a device copy first
+anyway: the rename is the one moment every stored artefact for the account moves at once.
+
 ### Backup file naming
 
 Device export: `Folio-backup-YYYY-MM-DD-HHMM.json` (capital F so it is findable by eye in a
@@ -518,8 +524,15 @@ Ask the owner for current numbers; this is only so you know what exists:
    - The worst commit (`373f262`) holds 1 email address and **18 rupee figures**.
    - A **literal login username** was committed in 2 revisions of `relay/Code.gs` as a
      non-empty `BACKUP_USERS` constant, which is why that constant is now deliberately empty.
-     Auth is username + PIN, so this is **half the credential pair**, and it is the reason
-     the exposure matters more than an email leak would on its own.
+     **But do not treat the username as a secret that history leaked** - it is a substring of
+     the public GitHub account name *and* of the app's own address
+     (`https://<owner>.github.io/folio/`), so anyone who opens the app already has it. It is
+     in the CURRENT files 6 times, 5 of them inside github.com / github.io URLs. Scrubbing it
+     from history therefore achieves **nothing**, and a replace-text rule matching it would
+     corrupt every one of those URLs. Excluded from the scrub set for exactly that reason.
+     The practical consequence: since auth is username + PIN and the username is permanently
+     public, **the PIN is the only real lock on the account** - which is why rotating it (done,
+     below) was worth far more than any amount of history rewriting.
    - **Clean:** no API keys, OAuth tokens, GitHub tokens, private keys or sha256 hashes
      anywhere in history. The three committed `/exec` URLs are public by design (the live
      `index.html` serves the current one).
@@ -527,7 +540,17 @@ Ask the owner for current numbers; this is only so you know what exists:
      effective here - the residual channels are GitHub's own orphaned objects (retrievable
      by old SHA until GC; ask GitHub Support to GC) and any external caches.
 
-   *Owner's decisions, 2026-09-17 - do not keep re-proposing these:* changing the PIN was
-   **declined**; a paid GitHub plan (which is what a private repo + Pages would need) was
-   **declined**. Any future mitigation has to live inside those two constraints.
+   *Owner's decisions, 2026-09-17:*
+   - **PIN rotated on 2026-09-17** (declined at first, then done once the reasoning above was
+     clear). This is the mitigation that actually closed the risk. Do not keep proposing it.
+   - A **paid GitHub plan** - which is what a private repo serving Pages would need - was
+     **declined**. Do not re-propose it.
+   - **The scrub itself is still OUTSTANDING.** Scope is settled: 1 email address + 10 rupee
+     figures, all absent from HEAD, so the current files come out byte-identical. The username
+     is deliberately NOT in that set (see above). 7 further candidates were skipped because
+     they also appear in the current files. Blocked only by tooling permissions, not by any
+     decision - the owner said to run it. Residual after it lands: GitHub keeps orphaned
+     objects addressable by old SHA until GC, so ask GitHub Support to GC.
+   - Now that the PIN is rotated, the scrub is **privacy housekeeping, not a security fix**.
+     Treat it as low urgency and say so rather than alarming the owner.
 3. Nothing else is half-built. If a feature looks unfinished, ask before assuming.

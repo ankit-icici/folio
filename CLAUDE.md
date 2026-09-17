@@ -367,6 +367,19 @@ meta.mf = {
   - Verified by differential runs of the extracted `planDue` in node (18 cases: due/cleared/
     stale-month/paused, per-plan tags, untagged fallback, clamp maths, payout maths incl. the
     close-out edge), plus a live check after deploy.
+- **The record sheets fetch the price for the date picked (v83).** `mfNavOn(code, day)` pulls
+  the fund's full NAV history from `api.mfapi.in/mf/<code>` once per fund per session
+  (`mfNavHist` cache; rows newest-first, dates DD-MM-YYYY) and returns the price on `day`, or
+  the **last traded day before it** - the real feed has gaps (12-14 Sep 2026 was a weekend plus
+  a holiday). `mfNavAuto(code,dateSel,navSel,hintSel,after)` wires a sheet: the date drives the
+  price, so changing the date refetches and overwrites the NAV box and says which day's price
+  it used; a hand-typed NAV survives until the date changes (programmatic fills fire no `input`
+  event, which is what the dirty flag rides on). A fund with **no scheme `code`** keeps the old
+  behaviour silently - if autofill seems missing, edit the fund and pick its name from the
+  suggestions so the code gets attached. NAV never enters the returns anyway (XIRR reads
+  amounts + dates from `txs`); it only sizes the units cut or added, so this is an
+  accuracy-of-units feature, not a returns fix. Verified against the live API in node:
+  15 Sep 2026 -> 15.5554 exact, Sunday the 13th -> the 11th's price, bad code -> null.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

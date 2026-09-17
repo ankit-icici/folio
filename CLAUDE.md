@@ -304,13 +304,14 @@ account's Gmail. It survives a bad restore, a deleted Drive folder or a wiped da
 put a permanent banner on it. Forwarding the monthly mail to a non-Google address would close the
 gap; that is a standing mail rule and the owner's call, so ask, do not add one.
 
-**Head vs deployed (deliberate, do not "fix"):** the backup functions live in the project
-**head**; time-driven triggers run head, while the web app serves its **pinned version**. So
-`?action=ping` from the live app answers **v:15** while head reads `v:16` - that gap is the
-design, not drift. It was done so the live app could never be blocked on scopes it had not been
-granted. (In the event the owner's authorisation already covered Mail + Trigger, so `Run` needed
-no consent screen - but keep the split anyway: redeploying head to the web app is an unnecessary
-risk with no benefit, and never worth doing mid-market-day.)
+**Head vs deployed (historical - the split is now CLOSED):** the backup functions live in the
+project **head**, and time-driven triggers run head. The web app used to serve a *pinned* version,
+so `?action=ping` answered a lower number than head - that gap was the design, not drift: it kept
+the live app from ever being blocked on scopes it had not been granted. The owner's authorisation
+turned out to already cover Mail + Trigger, so the split was closed and **the web app now serves
+the same code as head** (see *Architecture*): deployment **"Version 16"**, `?action=ping` answers
+**v:18** - two unrelated counters, do not try to align them. Verified live on 2026-09-17.
+Redeploying head is still never worth doing mid-market-day.
 
 **Verified end to end on 2026-09-11**, not just by reading code: the trigger was installed and
 listed on the Triggers page, `monthlyBackup()` was run once, the mail arrived, and the attachment
@@ -507,8 +508,26 @@ Ask the owner for current numbers; this is only so you know what exists:
 1. **Three exited funds at the self-managed broker are not imported** (the owner was offered
    this and has not decided). They would join as closed private funds and, being private, would
    move no dashboard figure - only the Closed group and their own per-fund CAGR.
-2. **Git history still contains data that the current files no longer do** - earlier commits of
-   this file carried real holdings, amounts, the owner's email and username. Scrubbing HEAD does
-   not remove them from a public repo's history. Rewriting history (filter-repo + force-push) is
+2. **Git history still contains data that the current files no longer do.** Scrubbing HEAD does
+   not remove it from a public repo's history. Rewriting history (filter-repo + force-push) is
    the owner's decision; flag it, do not do it unasked.
+
+   *Audited 2026-09-17 — measured, not assumed:*
+   - **78 of 97 commits** carry the owner's email; the only affected path is `CLAUDE.md`
+     (plus `relay/Code.gs` for the username, below). HEAD itself is clean - 0 hits.
+   - The worst commit (`373f262`) holds 1 email address and **18 rupee figures**.
+   - A **literal login username** was committed in 2 revisions of `relay/Code.gs` as a
+     non-empty `BACKUP_USERS` constant, which is why that constant is now deliberately empty.
+     Auth is username + PIN, so this is **half the credential pair**, and it is the reason
+     the exposure matters more than an email leak would on its own.
+   - **Clean:** no API keys, OAuth tokens, GitHub tokens, private keys or sha256 hashes
+     anywhere in history. The three committed `/exec` URLs are public by design (the live
+     `index.html` serves the current one).
+   - **0 forks, 0 stars.** No fork-retained copies exist, so a rewrite would actually be
+     effective here - the residual channels are GitHub's own orphaned objects (retrievable
+     by old SHA until GC; ask GitHub Support to GC) and any external caches.
+
+   *Owner's decisions, 2026-09-17 - do not keep re-proposing these:* changing the PIN was
+   **declined**; a paid GitHub plan (which is what a private repo + Pages would need) was
+   **declined**. Any future mitigation has to live inside those two constraints.
 3. Nothing else is half-built. If a feature looks unfinished, ask before assuming.

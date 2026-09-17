@@ -20,6 +20,9 @@ anything — the operational gotchas below have all bitten before.
    against real data*).
 5. **This repo is public and holds code only.** Portfolio data lives solely in the owner's Drive.
    Never commit a document, an export, a PIN or a screenshot of holdings.
+6. **The owner is not a programmer — write to him accordingly.** Plain English, the decision
+   first, no jargon or file paths in replies. Technical reasoning goes in this file instead.
+   See *Talking to the owner*; getting this wrong has already cost a round trip.
 
 ## Live URLs
 
@@ -35,15 +38,50 @@ The backend `/exec` URL is hardcoded as `BACKEND` at the top of the `<script>` i
 
 ### Starter prompt (what to paste into a fresh session)
 
-> Work on my stock portfolio PWA: https://github.com/ankit-icici/folio — clone it and read
-> CLAUDE.md first, starting with the "Start here" block. The live app is
-> https://ankit-icici.github.io/folio/ and my data lives in my own Google Drive behind an Apps
-> Script backend — that backend is edited in the Apps Script browser editor, not from the repo.
-> I'm signed into that Google account in Chrome along with my broker portals, so use my browser
-> for anything needing a login and ask me to sign in rather than asking for credentials. Verify
-> changes against my real data in the live app before telling me they work. [then the request]
+The short form the owner actually uses, and it is enough — this file carries the rest:
+
+> Work on my portfolio app: https://github.com/ankit-icici/folio — clone it and read CLAUDE.md
+> fully before anything else. Then: *[the request]*
+
+**Both halves of that are load-bearing.** There is no local copy on the owner's machine, so a
+session starts with nothing to read; and because the repo does not exist at session start, this
+file is **not** picked up automatically the way a CLAUDE.md in an already-open project would be.
+Drop either half and the next session starts guessing. "Fully" matters too: the rules that bite
+(two version strings, never deleting a sold-out stock, `keep:1`) are spread all the way down.
+
+Longer form, when the task needs the browser:
+
+> …The live app is https://ankit-icici.github.io/folio/ and my data lives in my own Google Drive
+> behind an Apps Script backend — that backend is edited in the Apps Script browser editor, not
+> from the repo. I'm signed into that Google account in Chrome along with my broker portals, so
+> use my browser for anything needing a login and ask me to sign in rather than asking for
+> credentials. Verify changes against my real data in the live app before telling me they work.
 
 Anything the owner must decide is under *Open decisions / backlog*. Ask; do not guess.
+
+## Talking to the owner
+
+**The owner is not a programmer.** He owns this app and makes every real decision about it, but
+he does not read code and does not follow git or deployment jargon. A technically correct report
+he cannot parse is a failed report — it leaves him unable to decide, which is the entire purpose
+of reporting to him. This was learnt the hard way: a summary written in normal engineering
+register got the reply *"didnt understand any of it. can you explain to me in a more-simpler,
+easy to understand language. i am non tech guy."*
+
+- **Lead with the plain-English situation, then the decision he has to make, then a
+  recommendation.** Reach for an everyday analogy over precision he cannot use.
+- **Keep commands, file paths, function names and flags out of replies** unless he asks for them.
+  Say "the tab row stays put when you scroll", not "`#subseg` gets `position:sticky`".
+- **Say how worried he should be, in words** — "worth tidying, not worth losing sleep over".
+  Be explicit when something is housekeeping rather than urgent, so a blocked or deferred step
+  does not read as an emergency.
+- **Give him something short to answer.** He replies in a few words ("run", "pin changed",
+  "do it"), so end with a clear either/or rather than an open-ended menu.
+- **Detailed technical reasoning belongs in THIS file, not in replies to him.** That is what it
+  is for: write the mechanism down here, tell him the outcome.
+- None of this means hiding bad news or softening a real problem — state those plainly too, just
+  in words he can act on. And when a claim turns out to be wrong, correct it outright: he was
+  told the leaked username protected his login, and that had to be walked back (see backlog 2).
 
 ## Legacy name: "nivesh"
 

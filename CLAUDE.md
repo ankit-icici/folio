@@ -392,6 +392,16 @@ meta.mf = {
   "All N SIPs recorded this month ✓" or "X of N SIPs still to record this month" - unlike the
   gold banner, `left` also counts plans whose day has NOT come yet, so "all recorded" really
   means the month is finished, not merely nothing-overdue. Owner asked for it 2026-09-17.
+- **Per-fund ledger rows show the NAV (v85).** Two sources, in order: (1) the record sheets
+  (SIP instalment, SWP payout) and Redeem now store `nav` on the tx they write - `mfTxSheet`
+  preserves it on edit exactly like `pid`, though editing a DATE keeps the old nav (known
+  wart; recomputing would need an async fetch in the edit sheet); (2) an older tx with no
+  stored nav renders a `data-txnav="fid:date"` placeholder that `mfFillTxNavs()` (called after
+  every render) resolves from the `mfNavHist` cache - read-only, never writes, bails via
+  `isConnected` when the list re-rendered mid-fetch. A fund with no scheme `code` and no
+  stored nav shows no NAV line at all rather than a permanent dash. Lumpsum-tab rows
+  (`showFund=true`) are untouched. NAV display goes through `price()`, so the privacy shutter
+  masks it like every other figure.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

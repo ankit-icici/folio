@@ -130,7 +130,23 @@ Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n
   hand-entered trade from that cutoff. **Set it on every txn any sheet creates, never on an
   imported one.** Without it, a backdated entry silently vanishes from Flows and CAGR while
   still driving P&L - that is how a 17 Aug 2026 sale went missing.
-- `closed:true` — fully exited position: hidden from lists, still present in Flows history.
+- `closed:true` — manual "hide this for good" flag: dropped by `withHolding()`, so it leaves every
+  list *and* the Exited group below. Nothing in the UI sets it; it is an escape hatch only.
+- **A position sold down to zero leaves the listing on its own (v78).** `all()` is LIVE holdings
+  only (`qty > LIVEQ`), and `exited()` picks up the sold-out ones for an **"Exited · fully sold"**
+  group under Core / Satellite, showing bought / sold / realised P&L from `realised(sid)`.
+  The reason this exists at all: the only way to get a zero-qty stock out of the list used to be
+  `delStock()`, which **deletes its txns**, and that silently removed the trade from Flows, from
+  the lifetime CAGR and from the month's realised P&L. An intraday round trip (buy and sell the
+  whole lot the same day) hit this every time. So:
+  - **Never delete a stock to tidy the list** - it now leaves by itself. The exited card
+    deliberately has **no Delete button**, only "Buy again" and "Edit"; `delStock()` stays for
+    genuine mistakes, reachable from a live card.
+  - `realised()` mirrors `holding()` in skipping `noLot` rows, so a flow-only imported record
+    never invents a gain. Keep them in step.
+  - Exited names are out of the dashboard, the allocation and the Plan automatically, because
+    those all read `all()`. `nStocks` counts live holdings only, which is the intent.
+  - `renderHeroOnly()` needs no change here: it already calls `totals(all())`.
 - Holdings use **FIFO**: sells consume oldest lots first. `holding()` is the single source of
   truth for qty / invested / avg / P&L — don't recompute elsewhere.
 - Prices: `price` and `prevClose` drive day P&L; live polling every 15 s overwrites them for any
@@ -234,6 +250,17 @@ meta.mf = {
   lifetime CAGR**; it needs flows of both signs and at least 90 days of history, else `null`.
 - `mfFundCagr(id)` per fund, `mfReturns()` across personal funds, `combinedCagr()` over stock
   cash flows + personal fund flows for Home.
+- **A plan may name a fund you do not hold yet (v78).** Starting a SIP is normally the *first*
+  thing that happens - there are no units until the first instalment lands. `mfPlanSheet()` used
+  to dead-end on "Add a fund first", which forced inventing a units figure just to get past it,
+  so its Fund dropdown now carries a **"+ A fund not in my list yet"** option (preselected when
+  there are no funds at all) with the same mfapi typeahead as `mfSheet()`; saving creates the
+  fund at `units:0, inv:0` and attaches the plan in one `mfWrite`. `mfSheet()`'s validation
+  accordingly accepts `units >= 0` - blank still fails, because `parseFloat("")` is `NaN`.
+- **Therefore `units:0` no longer implies "closed".** `mfPortHTML()` keys the live list on
+  `units > 0 || planned(id)` and the Closed group on `units <= 0 && !planned(id) && has txs`.
+  Without the `planned` test a brand-new SIP fund falls through **both** filters and does not
+  render at all, or worse lands under "Closed · fully redeemed" as an exit that never happened.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

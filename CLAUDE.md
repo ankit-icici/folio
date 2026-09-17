@@ -147,6 +147,12 @@ Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n
   - Exited names are out of the dashboard, the allocation and the Plan automatically, because
     those all read `all()`. `nStocks` counts live holdings only, which is the intent.
   - `renderHeroOnly()` needs no change here: it already calls `totals(all())`.
+  - **Search badges read live quantity too (v79).** `symState()` is the one place that decides
+    them: `held` from `all()`, `exited` from `exited()`. Both the recents list and the results
+    list call it. They used to build `held[sym]=1` from the mere existence of a stock record, so
+    a name sold to zero stayed badged **HELD** for ever - reported against Karamtara after an
+    intraday round trip. Anything new that labels a symbol goes through `symState()`, not
+    `Object.values(stocks)`.
 - Holdings use **FIFO**: sells consume oldest lots first. `holding()` is the single source of
   truth for qty / invested / avg / P&L — don't recompute elsewhere.
 - Prices: `price` and `prevClose` drive day P&L; live polling every 15 s overwrites them for any
@@ -508,6 +514,17 @@ on `:root`, `@media (prefers-color-scheme: dark)` guarded with `:root:not([data-
 and `:root[data-theme="dark"]`. Minimal chrome, no explanatory clutter, mobile-first (max-width
 560 px, safe-area insets). Keep it that way.
 
+- **The sub-tab row is frozen under the main one (v79).** `#subseg` is what carries
+  `position:sticky`, **not** the `.seg.sub` nav inside it: a sticky element can only travel
+  within its containing block, and that wrapper is exactly the nav's own height, so sticking the
+  nav itself does nothing at all. The nav's old `margin-top:10px` moved onto the wrapper as
+  `padding-top`, both to keep the spacing identical and to stop the margin collapsing out of the
+  sticky box. `#subseg:empty` resets to static with no padding, so Home and ESOP - which render
+  no sub row - gain no stray gap. The offset is `calc(10px + var(--segh))`, where `--segh` is set
+  by `syncSegOffset()` from the main pill's real `offsetHeight` (called in `render()` and on
+  resize) rather than a hardcoded constant, so platform font metrics cannot make the two
+  overlap. Measured after the change: main pill 10 → 51.9, wrapper sticks at 52, sub pill
+  62 → 101.2, i.e. the original 10px gap and no overlap.
 - `renderHeroOnly()` (5s interval) has its OWN copy of the per-tab hero switch - a new tab's hero must be added BOTH in `render()` and `renderHeroOnly()`, else the hero blanks a few seconds after opening the tab (bit the Funds dashboard in v56).
 
 ## Advisor (guest) access & privacy

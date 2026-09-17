@@ -101,8 +101,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px;position:sticky;top:10px;z-index:5;box-shadow:var(--card-shadow);margin-top:18px}
 .seg button{padding:9px 0;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
 .seg button[aria-selected="true"]{background:var(--btn);color:var(--btn-ink)}
-.seg.sub{position:static;margin-top:10px;box-shadow:none;background:var(--surface2)}
+.seg.sub{position:static;margin-top:0;box-shadow:none;background:var(--surface2)}
 .seg.sub button{padding:8px 0;font-size:10.5px}
+/* The sub-tabs freeze under the main pill. #subseg is what sticks, NOT the nav inside it:
+   a sticky child can only travel within its containing block, and the wrapper is exactly
+   the nav's own height, so sticking the nav would do nothing at all. The nav's old 10px
+   margin moves here as padding, both to keep the spacing identical and to stop that margin
+   collapsing out of the sticky box. --segh is the real measured height of the main pill
+   (see syncSegOffset) so the two never overlap. */
+#subseg{position:sticky;top:calc(10px + var(--segh,42px));z-index:4;padding-top:10px}
+#subseg:empty{position:static;padding-top:0}
 .hlist{margin-top:12px;display:flex;flex-direction:column;gap:10px}
 .hrow{width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:15px 16px;
   background:var(--surface);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--card-shadow)}
@@ -436,7 +444,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v78";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v79";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -902,6 +910,15 @@ function renderIdx(){
       '<div class="idxd mono '+(ch===null?"":cls(ch))+'">'+(ch===null?"":spct(ch))+'</div></div>';
   }).join("");
 }
+/* Measure the main tab pill rather than hardcoding its height: the sub row freezes directly
+   under it, so a guessed constant would leave a gap or an overlap as soon as the platform font
+   metrics differ. Cheap - one offsetHeight read next to a full innerHTML rewrite. */
+function syncSegOffset(){
+  const s=$("#seg"); if(!s) return;
+  const h=s.offsetHeight;
+  if(h) document.documentElement.style.setProperty("--segh",h+"px");
+}
+addEventListener("resize",syncSegOffset);
 function renderHeroOnly(){
   const h=$("#hero"); if(!h) return;
   const v=view();
@@ -923,7 +940,7 @@ function render(){
     [["port","Portfolio"],["sip","SIPs"],["swp","SWPs"],["tx","Lumpsum"]].map(o=>
       '<button role="tab" aria-selected="'+(mfTab===o[0])+'" data-mtab="'+o[0]+'">'+o[1]+'</button>').join("")+'</nav>':"");
   h.innerHTML=v==="home"?homeHeroHTML(totals(list)):(v==="stocks"?heroHTML(totals(list)):(v==="mf"?mfHeroHTML():""));
-  renderIdx(); renderNudge();
+  renderIdx(); renderNudge(); syncSegOffset();
   const c=$("#content");
   if(tab==="home") c.innerHTML=homeHTML(totals(list));
   else if(tab==="mf") c.innerHTML=mfHTML();
@@ -2399,10 +2416,20 @@ function forgetSearch(sym){
 function forgetAllSearches(){
   try{ localStorage.removeItem("nivesh_recent_"+AUTH.u); }catch(e){}
 }
+/* What search may say about a symbol. Keyed off the LIVE quantity, never off the mere existence
+   of a stock record - a name you have fully sold keeps its record (so Flows and the lifetime
+   return still have its trades) and would otherwise be badged HELD for ever. */
+function symState(){
+  const m={};
+  for(const x of all())    if(x.s.symbol) m[x.s.symbol]="held";
+  for(const x of exited()) if(x.s.symbol&&!m[x.s.symbol]) m[x.s.symbol]="exited";
+  return m;
+}
 function rowHTML(sym,name,held,when,rm){
   const e=symExch(sym);
   return '<div class="fr" data-sym="'+esc(sym)+'" data-name="'+esc(name)+'"><div class="fl">'+
-    '<div class="fn"><span class="nw">'+esc(name)+'</span>'+(held?'<span class="tag s">HELD</span>':'')+
+    '<div class="fn"><span class="nw">'+esc(name)+'</span>'+
+    (held==="exited"?'<span class="tag s">EXITED</span>':(held?'<span class="tag s">HELD</span>':''))+
     (e?'<span class="tag b">'+e+'</span>':'')+'</div>'+
     '<div class="fs mono">'+esc(symRoot(sym))+(when?' · '+esc(when):'')+'</div></div>'+
     '<div class="fa mono" data-px><span style="color:var(--faint)">…</span></div>'+
@@ -2428,7 +2455,7 @@ async function priceRows(scope){
 function recentHTML(){
   const r=recents();
   if(!r.length) return '<p class="hint">Type at least two letters.</p>';
-  const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
+  const held=symState();
   return '<div class="secthead rh" style="margin-top:14px">Recently searched'+
     '<button class="linky" id="qClear">Clear all</button></div>'+
     r.map(x=>rowHTML(x.s,x.n,held[x.s],ago(new Date(x.t).toISOString()),true)).join("");
@@ -2470,7 +2497,7 @@ async function runSearch(q){
     return;
   }
   if(!list.length){ $("#qOut").innerHTML='<p class="hint">Nothing found for “'+esc(q)+'”.</p>'; return; }
-  const held={}; for(const s of Object.values(stocks)) if(s.symbol) held[s.symbol]=1;
+  const held=symState();
   $("#qOut").innerHTML=list.map(r=>rowHTML(r.s,r.n,held[r.s],"")).join("")+
     '<p class="hint">Tap a result to add it to your portfolio. Searches are kept under Recently searched for 7 days.</p>';
   bindResultTaps();

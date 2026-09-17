@@ -380,6 +380,11 @@ meta.mf = {
   amounts + dates from `txs`); it only sizes the units cut or added, so this is an
   accuracy-of-units feature, not a returns fix. Verified against the live API in node:
   15 Sep 2026 -> 15.5554 exact, Sunday the 13th -> the 11th's price, bad code -> null.
+- **Owner-confirmed on the LIVE account, 2026-09-17** (v82+v83 together): the SBI Balanced
+  Advantage SWP and the two Helios SIP tranches (25k/20th, 5k/21st) are set up, the DUE flow
+  and the date-driven price autofill behave on real data ("all changes reflecting"). The
+  monthly rhythm from here is three one-tap confirms: payout after the 15th, tranches after
+  the 20th and 21st.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

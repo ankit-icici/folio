@@ -422,6 +422,12 @@ meta.mf = {
     recorded at, not today's price - the date box still refetches on change.
   - Kind is not editable (a SIP stays a SIP); `pid` survives the rewrite, so the due-flags stay
     truthful - deleting this month's entry re-flags the plan as DUE, which is correct.
+- **Owner-confirmed on the LIVE account, 2026-09-17 (second confirmation, v84-v86):** the
+  month-at-a-glance lines, the NAV on every ledger row, and the tap-to-correct editor are all
+  working on real data ("all working"). Guest safety of the new doors was verified in code the
+  same day: every mutating sheet (incl. mfRecordSwpSheet and mfTxUnitSheet) fronts guestGuard,
+  saves are no-ops for guests, and the relay refuses guest writes regardless. No advisor PIN is
+  set, so the guest view is dormant until the owner hands one out.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

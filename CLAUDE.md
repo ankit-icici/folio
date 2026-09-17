@@ -276,8 +276,8 @@ meta.esops = {
 ```js
 meta.mf = {
   funds: { id: {name, code, units, inv, nav, navDate, prevNav?, who?, priv?} },
-  sips:  { id: {fid, amt, day} },
-  swps:  { id: {fid, amt, day, to?} },      // `to` = fund the payout buys into
+  sips:  { id: {fid, amt, day, pause?} },   // pause: "YYYY-MM" restarts in that month, or 1 = open
+  swps:  { id: {fid, amt, day, to?, pause?} },  // `to` = fund the payout buys into
   txs:   { id: {fid, kind:'sip'|'swp'|'in'|'out', amt, date} }
 }
 ```
@@ -322,6 +322,19 @@ meta.mf = {
   - Dates come from the app's own `today()`, so "has the day passed" agrees with every other date
     the app prints. The sheet clamps the pre-filled day to 28 so a short month cannot produce an
     invalid date.
+- **Pausing a plan (v81).** `sips`/`swps` take an optional `pause`: a `"YYYY-MM"` string means it
+  restarts **in** that month, `1` means it waits to be resumed by hand. `sipPaused()` decides,
+  `pauseLabel()` words it, `pauseMonthOpts()` offers the next 24 months.
+  - **Computed, never auto-cleared.** An elapsed pause simply stops counting; nothing rewrites the
+    record, because rendering must not trigger a save. Do not "tidy" this into a write on render.
+  - A paused plan is **out of the `∕ month` headline** (both the counted total and the private-fund
+    line), never flagged due, greyed with a `PAUSED` tag, and carries a one-tap *Resume it now*
+    (`data-mfres`, which just deletes `pause`). The plan sheet has a Running/Paused toggle.
+  - **This is why it exists:** without it, a SIP paused at the AMC is flagged `DUE` every month
+    for ever, for money that was never going out - and a nudge that cries wolf gets ignored,
+    which would have undone v80. Deleting is not the substitute: it throws away the amount and
+    the day, so restarting means retyping from memory.
+  - Pausing touches nothing historical - units, cost basis and every past `txs` row are untouched.
 - **Redeeming** is `mfRedeemSheet(id)` and nothing else: it cuts units, releases cost basis
   pro-rata (average cost), and writes an `out` tx so the money back shows up in the returns.
   Redeem everything and the fund stays at `units:0, inv:0` — *closed*, still counted, shown in

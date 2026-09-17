@@ -445,7 +445,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v82";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v83";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1902,6 +1902,48 @@ function planDue(kind){
 const sipDue=()=>planDue("sip");
 const swpDue=()=>planDue("swp");
 const planDueIds=kind=>{const m={}; for(const d of planDue(kind)) m[d.id]=1; return m;};
+/* The price for the date picked, from the same NAV service the funds already use. History
+   comes down once per fund per session (newest first, dates DD-MM-YYYY) and is cached. A
+   holiday or weekend falls back to the last traded day before it - the real feed has gaps
+   (12-14 Sep 2026, weekend plus a holiday, is one). */
+let mfNavHist={};
+async function mfNavOn(code,day){
+  try{
+    if(!mfNavHist[code]){
+      const j=await fetch("https://api.mfapi.in/mf/"+code).then(r=>r.json());
+      mfNavHist[code]=(j&&j.data)||[];
+    }
+    for(const r of mfNavHist[code]){
+      const d=r.date.slice(6,10)+"-"+r.date.slice(3,5)+"-"+r.date.slice(0,2);
+      if(d<=day){ const n=parseFloat(r.nav); return n>0?{nav:n,date:d}:null; }
+    }
+  }catch(e){}
+  return null;
+}
+/* Wires a record sheet's date box to its NAV box: the date drives the price. Picking a date
+   refetches and overwrites the NAV; a hand-typed NAV stays put until the date changes again
+   (programmatic fills do not fire 'input', so only real typing sets the dirty flag). A fund
+   with no scheme code keeps the old behaviour - last synced NAV, hand-editable. */
+function mfNavAuto(code,dSel,nSel,hSel,after){
+  if(!code) return;
+  const dEl=$(dSel), nEl=$(nSel), note=t=>{const h=$(hSel); if(h) h.textContent=t;};
+  let seq=0, dirty=false;
+  nEl.addEventListener("input",()=>dirty=true);
+  const nice=x=>new Date(x+"T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+  const look=async force=>{
+    if(dirty&&!force) return;
+    const mine=++seq, d=dEl.value; if(!d) return;
+    note("Looking up that day\u2019s price\u2026");
+    const r=await mfNavOn(code,d);
+    if(mine!==seq) return;
+    if(r){ dirty=false; nEl.value=r.nav;
+      note("Price on "+nice(r.date)+(r.date===d?"":" \u2014 the last traded day before the date you picked"));
+      if(after) after(); }
+    else note("Couldn\u2019t look the price up \u2014 check it against the AMC\u2019s confirmation.");
+  };
+  dEl.addEventListener("change",()=>look(true));
+  look(false);
+}
 /* One instalment, confirmed rather than assumed. Everything is pre-filled - the amount from the
    plan, the date from the plan's own day this month, the NAV from the last refresh - but all
    three stay editable, because an instalment can bounce, be paused, or buy at a NAV that is not
@@ -1920,6 +1962,7 @@ function mfRecordSheet(id){
     '<div class="f2"><div class="f"><label>Amount</label><input id="riA" class="mono" inputmode="decimal" value="'+(+s.amt||0)+'"></div>'+
     '<div class="f"><label>Date</label><input id="riD" type="date" value="'+esc(d0)+'"></div></div>'+
     '<div class="f"><label>NAV it bought at</label><input id="riN" class="mono" inputmode="decimal" value="'+(+f.nav||0)+'"></div>'+
+    '<div class="hint" id="riNavH" style="margin-top:2px"></div>'+
     '<div class="hint" id="riPrev" style="margin-top:2px"></div>'+
     '<div class="err" id="riErr"></div>'+
     '<button class="primary" id="riGo">Record it</button>');
@@ -1932,6 +1975,7 @@ function mfRecordSheet(id){
   };
   prev();
   ["#riA","#riN"].forEach(sel=>$(sel).addEventListener("input",prev));
+  mfNavAuto(f.code,"#riD","#riN","#riNavH",prev);
   $("#riGo").addEventListener("click",()=>{
     const amt=parseFloat($("#riA").value), nav=parseFloat($("#riN").value), d=$("#riD").value;
     if(!(amt>0)) return showErr("#riErr","Enter the amount that went in.");
@@ -1968,6 +2012,7 @@ function mfRecordSwpSheet(id){
     '<div class="f2"><div class="f"><label>Amount paid out</label><input id="rsA" class="mono" inputmode="decimal" value="'+(+s.amt||0)+'"></div>'+
     '<div class="f"><label>Date</label><input id="rsD" type="date" value="'+esc(d0)+'"></div></div>'+
     '<div class="f"><label>NAV it sold at</label><input id="rsN" class="mono" inputmode="decimal" value="'+nav0+'"></div>'+
+    '<div class="hint" id="rsNavH" style="margin-top:2px"></div>'+
     '<div class="hint" id="rsPrev" style="margin-top:2px"></div>'+
     (dest?'<p class="hint">This plan feeds <b style="color:var(--ink)">'+esc(dest.name)+'</b> \u2014 record the money landing there separately when it arrives, with its real dates and amounts.</p>':"")+
     '<div class="err" id="rsErr"></div>'+
@@ -1990,6 +2035,7 @@ function mfRecordSwpSheet(id){
   };
   prev();
   ["#rsA","#rsN"].forEach(sel=>$(sel).addEventListener("input",prev));
+  mfNavAuto(f.code,"#rsD","#rsN","#rsNavH",prev);
   $("#rsGo").addEventListener("click",()=>{
     const c=calc(), d=$("#rsD").value;
     if(!c) return showErr("#rsErr","Enter the amount paid out and the NAV it sold at.");

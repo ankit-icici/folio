@@ -286,9 +286,14 @@ meta.mf = {
   funds: { id: {name, code, units, inv, nav, navDate, prevNav?, who?, priv?} },
   sips:  { id: {fid, amt, day, pause?} },   // pause: "YYYY-MM" restarts in that month, or 1 = open
   swps:  { id: {fid, amt, day, to?, pause?} },  // `to` = fund the payout buys into
-  txs:   { id: {fid, kind:'sip'|'swp'|'in'|'out', amt, date} }
+  txs:   { id: {fid, kind:'sip'|'swp'|'in'|'out', amt, date, nav?, pid?, rc?} }
 }
 ```
+
+`nav` (v85) is the price the entry went through at; `pid` (v82) ties a recorded entry to the plan
+it answers, so two tranches into one fund nag separately; `rc` (v87) is the cost basis that
+actually left the fund on a `swp`/`out`, which is what makes booked P&L exact. All three are
+preserved across edits — see the booked-P&L section for `rc`.
 
 - `inv` is the **cost basis of the units still held**, not lifetime money in. Lifetime money in
   lives in `txs`. Both matter: the card's P&L is `units*nav - inv`, while the CAGR reads `txs`.
@@ -434,6 +439,74 @@ meta.mf = {
   Portfolio's "Closed · fully redeemed" group. The fund sheet's Delete is only for an entry
   added by mistake and purges that fund's txs/sips/swps with it. The Lumpsum diary never
   moves units.
+
+### Booked P&L for the current FY (Home hero, v87)
+
+A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** — profit actually taken this
+financial year, shares and funds in one figure. Owner asked for it 2026-09-18 and named the
+label himself; keep the wording unless he changes it.
+
+- **What it is NOT, and why.** He first asked for "net P&L for the FY", which most naturally
+  means *how much the whole portfolio grew since 1 April* — realised **and** unrealised. That
+  cannot be answered: the app's first commit is **2026-09-05**, five months into FY 26-27, so
+  no snapshot, no `keep-` file and no price record exists for 1 Apr 2026 to measure against.
+  The oldest monthly restore point can only be `keep-…-2026-09`. Presented with that, the
+  owner chose the booked-only figure. **Do not quietly widen it later**: the full version is a
+  real, viable feature, but it needs historical closes (Yahoo serves them on the same chart
+  endpoint the relay already calls, via `period1`/`period2`; mfapi already serves NAV history
+  and `mfNavOn()` already reads it) — which means a relay change, a new deployment and a new
+  `/exec` URL. That is the owner's call, not a gap to paper over with an estimate.
+  From FY 27-28 onward the app *will* hold its own 1 April record, so the baseline problem
+  solves itself for future years — but never for this one.
+- `fyWindow(off)` is now the **single** definition of a financial year as dates.
+  `flowWindow()` was rewritten to call it, so the Flows FY chip and this tile can never come
+  to disagree about which trades fall inside the year. It rolls over on its own every 1 April
+  because `fyStart()` reads the clock — verified against a stubbed clock at 31 Mar, 1 Apr and
+  mid-year, for two consecutive years.
+- `realisedWin(from,to)` — shares. Per **sale**, FIFO: proceeds less the cost of the exact
+  lots consumed. Note this is a different question from `realised(sid)` above, which is
+  whole-position cash in vs out and only means anything once a name is fully sold; do not
+  merge them. The lot walk is `holding()`'s line for line, so the two cannot drift, and
+  `noLot` rows are skipped in both.
+  - **The walk must run over every sale, in or out of the window**, or the lots standing when
+    an in-window sale arrives are the wrong ones. There is a test for exactly this.
+  - **An uncovered sale books nothing** — only the covered part counts, the rest is tallied in
+    `naked`. This is the orphan-sell rule applied to a new figure: counting it whole is what
+    once put the lifetime CAGR several points above the truth, and it is not hypothetical,
+    because an IPO allotment produces no buy order at any broker.
+- `mfRealisedWin(from,to)` — funds. `swp` and `out` only, `mfCounted` only, so HUF and private
+  money stay out exactly as they do everywhere else.
+  - Cost released is read from the tx's own **`rc`**, written from v87 by `mfRedeemSheet`,
+    `mfRecordSwpSheet` and `mfTxUnitSheet` as the amount that *actually* came off the fund's
+    cost basis (`inv` before − `inv` after), not a recomputed estimate. That is what makes the
+    figure permanently exact: a fund's average cost today is no guide to what it was on the
+    day of an older redemption.
+  - `mfTxRemath()` gained an **additive** `rc` in its return (payouts only; `null` for a SIP),
+    so a corrected payout stores a fresh one. Existing callers read only `.u`/`.i` and are
+    untouched — the v86 properties were re-proven after the change.
+  - `mfTxSheet` **scales** `rc` by the amount ratio: that sheet can change the amount and
+    never touches the NAV, so the units sold move with the amount and the cost moves in step.
+    It drops `rc` entirely if the entry stops being a withdrawal or is moved to another fund.
+  - A pre-v87 entry has no `rc` and is valued at the fund's **current** average cost per unit —
+    the same approximation the v86 rewind states, exact unless a purchase at a different price
+    landed in between. **A fund already emptied has no average left to borrow**, so its entry
+    is skipped and counted rather than booked at zero cost, which would read as pure profit.
+- Anything skipped or uncovered surfaces as one plain line under the Home list, and **only**
+  when the count is non-zero — a permanent caveat under a figure becomes wallpaper.
+  The tile shows **"—"**, not ₹0, when nothing was sold all year: "nothing to report" and
+  "sold up and came out exactly level" are different statements.
+- `.hk.tight` exists because "P&L BOOKED (CURRENT FY)" wraps to two lines at 375px, which
+  pushes its figure down and breaks the row's alignment with the cell beside it. Tightened,
+  deliberately **not** `nowrap`, so a narrower phone wraps untidily rather than clipping the
+  year off the end. Measured after the change: all four labels one line, the two values in
+  row 2 within 1px of each other.
+- Verified by extracting the shipped functions and running them in node (38 assertions:
+  12 share cases incl. FIFO order, the previous-FY boundary at 31 Mar/1 Apr, lots eaten by an
+  earlier out-of-window sale, `noLot`, orphan and partly-covered sales, intraday round trip;
+  12 fund cases incl. stored-vs-average cost, the emptied-fund skip, HUF/private exclusion;
+  14 clock and remath cases), plus a live render at phone width driven with synthetic data in
+  the real document shape — privacy shutter, the "—" state and the uncounted-sale line all
+  confirmed on screen. **Not yet confirmed against the owner's real data** (see below).
 
 ## Data durability (do not weaken)
 
@@ -758,4 +831,11 @@ Ask the owner for current numbers; this is only so you know what exists:
      objects addressable by old SHA until GC, so ask GitHub Support to GC.
    - Now that the PIN is rotated, the scrub is **privacy housekeeping, not a security fix**.
      Treat it as low urgency and say so rather than alarming the owner.
-3. Nothing else is half-built. If a feature looks unfinished, ask before assuming.
+3. **The FY figure that includes holdings, not just sales, was offered and deferred.** On
+   2026-09-18 the owner was given the choice and picked booked-only (shipped as v87), which
+   is the half the trade records can prove on their own. The other half — his holdings rising
+   or falling since 1 April — needs historical closes through the relay, so it costs a backend
+   change, a new deployment and a new `/exec` URL. He has not said no to it; he has not been
+   asked again since. Worth re-offering once he has lived with the booked figure, and note
+   that from FY 27-28 the baseline problem disappears on its own.
+4. Nothing else is half-built. If a feature looks unfinished, ask before assuming.

@@ -80,6 +80,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
 .hcard{background:linear-gradient(140deg,#191817 0%,#23201B 55%,#2C261C 100%);border:1px solid rgba(212,178,116,.28);border-radius:20px;padding:20px 20px 16px;color:#ECEAE4;box-shadow:0 12px 32px rgba(20,18,14,.28)}
 .hgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px 12px}
 .hk{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:rgba(236,234,228,.45);font-weight:600;margin-bottom:4px}
+/* a long hero label (the booked-P&L one names its year) tightens rather than wrapping: a
+   two-line key pushes its figure down and breaks the row's alignment with the cell beside
+   it. Tightened, not nowrapped - on a phone narrower than 375px it may still wrap, which
+   is untidy but readable, where nowrap would clip the year off the end. */
+.hk.tight{font-size:8.5px;letter-spacing:.055em}
 .hv{font-size:19.5px;font-weight:600;letter-spacing:-.01em;line-height:1.15}
 .hv small{font-size:12px;font-weight:500;opacity:.9}
 .hgrid .r{text-align:right}
@@ -446,7 +451,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v86";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v87";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -766,6 +771,38 @@ function realised(sid){
     const v=(+t.qty||0)*(+t.price||0);
     if(t.side==="sell") out+=v; else inn+=v; }
   return {inn,out,net:out-inn,pct:inn>0?(out-inn)/inn*100:0};
+}
+/* Profit actually BOOKED on share sales dated inside [from,to] - sale proceeds less the cost
+   of the exact lots FIFO consumed. Note this is per-SALE, unlike realised() above, which is
+   whole-position cash in vs out and only means anything once a name is fully sold.
+   The lot walk is holding()'s, line for line, so the two can never disagree: noLot rows are
+   skipped in both, and an imported flow-only record therefore still cannot invent a gain.
+   A sale the lots cannot cover is NOT booked as free income - only the covered part counts
+   and the rest is tallied in `naked`. Counting an uncovered sale whole is what once put the
+   lifetime return several points above the truth, and it is not hypothetical here: an IPO
+   allotment produces no buy order at any broker, so its sale arrives with nothing to match. */
+function realisedWin(from,to){
+  let net=0,n=0,naked=0;
+  for(const sid of Object.keys(stocks)){
+    const lots=[];
+    for(const t of stockTxns(sid)){
+      if(t.noLot) continue;
+      const q=+t.qty||0, p=+t.price||0;
+      if(t.side==="buy"){ lots.push({q,p}); continue; }
+      let r=q,cost=0,got=0;
+      while(r>1e-9&&lots.length){
+        const l=lots[0],take=Math.min(l.q,r);
+        cost+=take*l.p; got+=take; l.q-=take; r-=take;
+        if(l.q<=1e-9) lots.shift();
+      }
+      /* the walk above must run for EVERY sale, in or out of the window, or the lots
+         standing when an in-window sale arrives would be the wrong ones */
+      if(!(t.date>=from&&t.date<=to)) continue;
+      if(got>1e-9){ net+=got*p-cost; n++; }
+      if(r>1e-9) naked++;
+    }
+  }
+  return {net,n,naked};
 }
 
 /* Complete cash-flow history across all broker accounts (imported ledger) plus any
@@ -1604,6 +1641,34 @@ function privTotals(){          /* shown on its own, never folded into a total *
    owner's dashboards keep matching the advisor's official app figure for figure. */
 const mfCounted=f=>!(f.who==="HUF")&&!f.priv;
 const mfPrivate=f=>!!f.priv;
+/* Profit BOOKED when fund units were sold inside [from,to] - SWP payouts and redemptions.
+   HUF and private money stays out, exactly as it does in every other aggregate, so this
+   figure ties to the same set of funds the rest of the dashboard is built from.
+   Cost released comes from the tx's own `rc`, which the payout, redemption and correction
+   sheets have written since v87 - that is exact, because it is the amount that actually
+   left the fund's cost basis at the time.
+   An entry predating v87 has no `rc`, so it is valued at the fund's CURRENT average cost
+   per unit: the same approximation the v86 rewind states, exact unless a purchase at a
+   different price landed in between. A fund already emptied has no average left to borrow,
+   so rather than book it at zero cost - which would read as pure profit, the very trap the
+   orphan-sell rule exists for - the entry is skipped and counted in `skipped`, and the
+   dashboard says so instead of quietly understating the cost. */
+function mfRealisedWin(from,to){
+  const F=mfunds(); let net=0,n=0,skipped=0;
+  for(const t of Object.values(mfTxs())){
+    if(t.kind!=="swp"&&t.kind!=="out") continue;
+    if(!(t.date>=from&&t.date<=to)) continue;
+    const f=F[t.fid]; if(!f||!mfCounted(f)) continue;
+    const amt=+t.amt||0; if(!(amt>0)) continue;
+    let cost=null;
+    if(t.rc!=null&&isFinite(+t.rc)&&+t.rc>=0) cost=+t.rc;
+    else{ const nav=+t.nav||0,u=+f.units||0,inv=+f.inv||0;
+      if(nav>0&&u>0.001&&inv>0) cost=(amt/nav)*(inv/u); }
+    if(cost===null){ skipped++; continue; }
+    net+=amt-cost; n++;
+  }
+  return {net,n,skipped};
+}
 function mfReturns(){
   const F=mfunds(); let inv=0,cur=0;
   for(const f of Object.values(F)){ if(!mfCounted(f)) continue;
@@ -1683,8 +1748,22 @@ function combinedCagr(){
   for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
   return lo*100;
 }
+/* "P&L booked (Current FY)" - profit actually taken this financial year, shares and funds
+   in one figure, rolling over by itself on 1 April.
+   It is deliberately NOT the change in what the portfolio is worth over the year. That was
+   asked for first and cannot be answered: the app has only existed since Sep 2026, so there
+   is no record anywhere of what any holding was worth on 1 Apr 2026 to measure against.
+   Producing it would mean teaching the relay to fetch historical closes (Yahoo serves them
+   with period1/period2, and mfapi already serves NAV history) - viable, and the owner's call
+   to make, not a gap to paper over with a guess. Booked money is the part the trade records
+   can prove on their own, and that is what this shows. */
+function bookedFY(){
+  const [a,b]=fyWindow(0);
+  const s=realisedWin(a,b), m=mfRealisedWin(a,b);
+  return {net:s.net+m.net, n:s.n+m.n, left:s.naked+m.skipped};
+}
 function homeHeroHTML(t){
-  const m=mfTotals();
+  const m=mfTotals(), bk=bookedFY();
   const inv=t.inv+m.inv, cur=t.cur+m.cur, pl=cur-inv;
   const st = pendingSave ? "SAVING…" : (sync==="init" ? "SYNCING…" : (sync==="live" ? "LIVE" : "OFFLINE"));
   const stamp = meta.priceAt || meta.updatedAt;
@@ -1693,6 +1772,10 @@ function homeHeroHTML(t){
       '<div><div class="hk">Current value</div><div class="hv mono">'+kabs(cur)+'</div></div>'+
       '<div class="r"><div class="hk">Total investment</div><div class="hv mono">'+kabs(inv)+'</div></div>'+
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(pl)+'">'+skfmt(pl)+'</div></div>'+
+      /* a dash, not ₹0, when nothing has been sold all year: "nothing to report" and
+         "sold up and came out exactly level" are not the same statement */
+      '<div class="r"><div class="hk tight">P&L booked (Current FY)</div><div class="hv mono '+cls(bk.net)+'">'+
+        (bk.n?skfmt(bk.net):'—')+'</div></div>'+
     '</div>'+
     '<div class="gl"><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
@@ -1716,10 +1799,17 @@ function homeHTML(t){
     '<span class="chev">›</span></button>';
   const nStocks=all().length;
   const nFunds=Object.values(mfunds()).filter(f=>mfCounted(f)&&(+f.units||0)>0).length;
+  /* Only ever on screen when something genuinely could not be worked out. Silence is the
+     normal state; a permanent caveat under a figure becomes wallpaper and stops being read. */
+  const left=bookedFY().left;
   return '<div class="hlist">'+
     row("stocks","Stocks",t.cur,t.pl,t.plPct,nStocks+" holdings · live NSE prices")+
     row("mf","Mutual funds",m.cur,m.pl,m.plPct,nFunds?nFunds+" funds · NAV updates daily":"tap to add funds")+
-    '</div>';
+    '</div>'+
+    (left?'<p class="hint" style="padding:0 4px">'+left+' sale'+(left===1?"":"s")+' this year '+
+      (left===1?"is":"are")+' left out of the booked figure — what '+(left===1?"it":"they")+
+      ' originally cost you isn’t in your records, so there is no profit to work out from it. '+
+      'Everything else is counted.</p>':"");
 }
 
 /* ---------- funds view ---------- */
@@ -2067,9 +2157,11 @@ function mfRecordSwpSheet(id){
     const full=c.uLeft<0.001;
     mfWrite(M=>{
       const g=M.funds[s.fid]; if(!g) return;
+      const i0=Math.round(+g.inv||0), iLeft=full?0:Math.round(c.iLeft);   /* see mfRedeemSheet on `rc` */
       g.units=full?0:+c.uLeft.toFixed(4);
-      g.inv=full?0:Math.round(c.iLeft);
-      M.txs[uid()]={fid:s.fid,kind:"swp",amt:Math.round(c.amt),nav:parseFloat($("#rsN").value),date:d,pid:id};
+      g.inv=iLeft;
+      M.txs[uid()]={fid:s.fid,kind:"swp",amt:Math.round(c.amt),nav:parseFloat($("#rsN").value),date:d,pid:id,
+        rc:Math.max(0,i0-iLeft)};
     });
     closeSheet(); setTab("mf");
   });
@@ -2302,14 +2394,21 @@ function mfTxRemath(kind,U,I,oldAmt,navOld,edit){
   if(u<-0.001) return null;
   u=Math.max(0,u); i=Math.max(0,i);
   if(u<0.001){ u=0; i=0; }
+  /* `rc` rides along purely additively (payouts only): the cost the corrected entry really
+     releases, measured as the drop in the cost basis it causes, so a corrected payout stores
+     a fresh `rc` instead of keeping the one the original entry wrote. Existing callers read
+     only .u and .i and are untouched. */
+  let rc=null;
   if(edit){
     const a2=+edit.amt, n2=+edit.nav;
     if(!(a2>0)||!(n2>0)) return null;
     if(kind==="sip"){ u+=a2/n2; i+=a2; }
     else{ let un=a2/n2; if(un>u*1.0001) return null; if(un>u) un=u;
-          const avg2=u>0?i/u:0; u-=un; i-=un*avg2; if(u<0.001){u=0;i=0;} }
+          const avg2=u>0?i/u:0, iB=i;
+          u-=un; i-=un*avg2; if(u<0.001){u=0;i=0;}
+          rc=Math.max(0,Math.round(iB-i)); }
   }
-  return {u:+u.toFixed(4),i:Math.round(i)};
+  return {u:+u.toFixed(4),i:Math.round(i),rc};
 }
 /* Edit or remove a RECORDED instalment/payout - the entries that moved units. An old tx with
    no stored nav gets that day's price looked up so the rewind uses what the entry actually
@@ -2359,7 +2458,8 @@ function mfTxUnitSheet(id){
     mfWrite(M=>{
       const g=M.funds[t0.fid]; if(!g) return;
       g.units=e.u; g.inv=e.i;
-      M.txs[id]={fid:t0.fid,kind:t0.kind,amt:Math.round(a),nav:n,date:d,...(t0.pid?{pid:t0.pid}:{})};
+      M.txs[id]={fid:t0.fid,kind:t0.kind,amt:Math.round(a),nav:n,date:d,...(t0.pid?{pid:t0.pid}:{}),
+        ...(e.rc!=null?{rc:e.rc}:{})};
     });
     closeSheet(); setTab("mf");
   });
@@ -2398,7 +2498,18 @@ function mfTxSheet(id){
   $("#tGo").addEventListener("click",()=>{
     const fid=$("#tF").value, amt=parseFloat($("#tA").value), d=$("#tD").value;
     if(!fid||!(amt>0)||!d) return showErr("#tErr","Fund, amount and date are required.");
-    mfWrite(M=>{ const k=id||uid(); M.txs[k]={fid,amt,date:d,kind,...(it&&it.pid?{pid:it.pid}:{}),...(it&&+it.nav>0?{nav:+it.nav}:{})}; });
+    /* `rc` (cost released) survives an edit like nav and pid do, but SCALED: this sheet can
+       change the amount and never touches the NAV, so the units the entry sold move with the
+       amount and the cost that came off moves in step. Carried over unscaled it would quietly
+       misprice the booked figure. Dropped outright if the entry stops being a withdrawal or
+       is moved to another fund, where a cost released from the old one means nothing - the
+       booked figure then falls back to the fund's average, which is the honest estimate. */
+    const rc0=it&&it.rc!=null&&isFinite(+it.rc)?+it.rc:null, a0=it?+it.amt||0:0;
+    mfWrite(M=>{ const k=id||uid();
+      const rc=rc0!=null&&a0>0?Math.max(0,Math.round(rc0*(amt/a0))):null;
+      M.txs[k]={fid,amt,date:d,kind,...(it&&it.pid?{pid:it.pid}:{}),...(it&&+it.nav>0?{nav:+it.nav}:{}),
+        ...(rc!=null&&kind==="out"&&it&&it.fid===fid?{rc}:{})};
+    });
     closeSheet(); setTab("mf");
   });
   const del=$("#tDel");
@@ -2463,9 +2574,13 @@ function mfRedeemSheet(id){
     const full=c.uLeft<0.001;
     mfWrite(M=>{
       const g=M.funds[id]; if(!g) return;
+      /* `rc` is the cost that actually left this fund's books, not a recomputed estimate,
+         so the booked-P&L figure reads the real thing for ever after - the fund's average
+         cost today is no guide to what it was on the day of an older redemption */
+      const i0=Math.round(+g.inv||0), iLeft=full?0:Math.round(c.iLeft);
       g.units=full?0:+c.uLeft.toFixed(4);
-      g.inv=full?0:Math.round(c.iLeft);
-      M.txs[uid()]={fid:id,kind:"out",amt:Math.round(c.amt),nav,date:d};
+      g.inv=iLeft;
+      M.txs[uid()]={fid:id,kind:"out",amt:Math.round(c.amt),nav,date:d,rc:Math.max(0,i0-iLeft)};
     });
     mfSel=null; closeSheet(); setTab("mf");
   });
@@ -2560,13 +2675,14 @@ function fyStart(off){
   return (d.getMonth()>=3?d.getFullYear():d.getFullYear()-1)-(off||0);
 }
 const fyLabel=off=>{const y=fyStart(off);return "FY "+String(y%100).padStart(2,"0")+"-"+String((y+1)%100).padStart(2,"0");};
+/* the one definition of a financial year as dates. Flows and the dashboard's booked figure
+   both read it, so the two can never come to disagree about which trades fall in the year;
+   it rolls over on its own every 1 April because fyStart() reads the clock. */
+const fyWindow=off=>{const y=fyStart(off);return [y+"-04-01",(y+1)+"-03-31"];};
 const monthEnd=ym=>{const[y,m]=ym.split("-").map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);};
 /* every period resolves to an inclusive [from,to] window */
 function flowWindow(){
-  if(flowPeriod==="fy"||flowPeriod==="pfy"){
-    const y=fyStart(flowPeriod==="pfy"?1:0);
-    return [y+"-04-01",(y+1)+"-03-31"];
-  }
+  if(flowPeriod==="fy"||flowPeriod==="pfy") return fyWindow(flowPeriod==="pfy"?1:0);
   if(flowPeriod==="cus"){
     let a=flowA||fyStart(0)+"-04", b=flowB||new Date().toISOString().slice(0,7);
     if(a>b){ const t=a; a=b; b=t; }

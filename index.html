@@ -85,6 +85,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:cal
    it. Tightened, not nowrapped - on a phone narrower than 375px it may still wrap, which
    is untidy but readable, where nowrap would clip the year off the end. */
 .hk.tight{font-size:8.5px;letter-spacing:.055em}
+/* the long/short breakdown of the booked figure. Same two columns and same label-above-value
+   shape as .hgrid so it reads as part of the card, but at 15px it sits visibly BELOW the
+   headline figures - it is a breakdown of one of them, not a fifth headline. Laid out this
+   way rather than as an inline "Long term +₹X" pair because that wraps at 375px and strands
+   the + on its own line. */
+.ltst{display:grid;grid-template-columns:1.1fr 1fr;gap:12px;margin-top:16px;padding-top:14px;
+  border-top:1px solid rgba(212,178,116,.22)}
+.ltst .r{text-align:right}
+.ltv{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.15}
 .hv{font-size:19.5px;font-weight:600;letter-spacing:-.01em;line-height:1.15}
 .hv small{font-size:12px;font-weight:500;opacity:.9}
 .hgrid .r{text-align:right}
@@ -451,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v88";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v89";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -772,6 +781,15 @@ function realised(sid){
     if(t.side==="sell") out+=v; else inn+=v; }
   return {inn,out,net:out-inn,pct:inn>0?(out-inn)/inn*100:0};
 }
+/* "Held more than a year", as the owner defined it on 2026-09-18 and as the holding-period
+   rule reads: the sale must fall STRICTLY AFTER the first anniversary of the purchase, so a
+   sale ON the anniversary is not long term. 29 Feb rolls to 1 Mar, the conventional treatment.
+   This is a holding-period split and nothing more - it is deliberately not a tax computation,
+   because the rate and even the twelve-month threshold itself vary by instrument (debt and
+   many hybrid funds do not get the equity treatment at all). Do not quietly turn it into one. */
+const plusYear=d=>{const [y,m,dd]=d.split("-").map(Number);
+  return new Date(Date.UTC(y+1,m-1,dd)).toISOString().slice(0,10);};
+const heldLong=(buyD,sellD)=>!!buyD&&!!sellD&&sellD>plusYear(buyD);
 /* Profit actually BOOKED on share sales dated inside [from,to] - sale proceeds less the cost
    of the exact lots FIFO consumed. Note this is per-SALE, unlike realised() above, which is
    whole-position cash in vs out and only means anything once a name is fully sold.
@@ -782,27 +800,34 @@ function realised(sid){
    lifetime return several points above the truth, and it is not hypothetical here: an IPO
    allotment produces no buy order at any broker, so its sale arrives with nothing to match. */
 function realisedWin(from,to){
-  let net=0,n=0,naked=0;
+  let net=0,n=0,naked=0,long=0,short=0,unk=0;
   for(const sid of Object.keys(stocks)){
     const lots=[];
     for(const t of stockTxns(sid)){
       if(t.noLot) continue;
       const q=+t.qty||0, p=+t.price||0;
-      if(t.side==="buy"){ lots.push({q,p}); continue; }
-      let r=q,cost=0,got=0;
+      if(t.side==="buy"){ lots.push({q,p,d:t.date}); continue; }
+      let r=q,cost=0,got=0,lq=0,lc=0,sq=0,sc=0,uq=0,uc=0;
       while(r>1e-9&&lots.length){
         const l=lots[0],take=Math.min(l.q,r);
-        cost+=take*l.p; got+=take; l.q-=take; r-=take;
+        cost+=take*l.p; got+=take;
+        /* FIFO already says WHICH lots this sale ate; each carries the day it was bought,
+           so the long/short split falls out of the same walk rather than being estimated */
+        if(!l.d) { uq+=take; uc+=take*l.p; }
+        else if(heldLong(l.d,t.date)) { lq+=take; lc+=take*l.p; }
+        else { sq+=take; sc+=take*l.p; }
+        l.q-=take; r-=take;
         if(l.q<=1e-9) lots.shift();
       }
       /* the walk above must run for EVERY sale, in or out of the window, or the lots
          standing when an in-window sale arrives would be the wrong ones */
       if(!(t.date>=from&&t.date<=to)) continue;
-      if(got>1e-9){ net+=got*p-cost; n++; }
+      if(got>1e-9){ net+=got*p-cost; n++;
+        long+=lq*p-lc; short+=sq*p-sc; unk+=uq*p-uc; }
       if(r>1e-9) naked++;
     }
   }
-  return {net,n,naked};
+  return {net,n,naked,long,short,unk};
 }
 
 /* Complete cash-flow history across all broker accounts (imported ledger) plus any
@@ -1654,8 +1679,8 @@ const mfPrivate=f=>!!f.priv;
    question. Anything the walk cannot reach honestly is counted in `skipped` and disclosed
    on screen - never booked at zero cost, which would read as pure profit. */
 function mfRealisedWin(from,to){
-  const F=mfunds(); let net=0,n=0,skipped=0;
-  const walked={};                       /* one backward walk per fund, reused across its txs */
+  const F=mfunds(); let net=0,n=0,skipped=0,long=0,short=0,unk=0;
+  const walked={},split={};              /* one walk of each kind per fund, reused across txs */
   for(const [id,t] of Object.entries(mfTxs())){
     if(t.kind!=="swp"&&t.kind!=="out") continue;
     if(!(t.date>=from&&t.date<=to)) continue;
@@ -1669,9 +1694,15 @@ function mfRealisedWin(from,to){
       if(c!=null&&isFinite(c)&&c>=0) cost=c;
     }
     if(cost===null){ skipped++; continue; }
-    net+=amt-cost; n++;
+    const gain=amt-cost; net+=gain; n++;
+    /* apportioning the GAIN by unit share is the same as splitting proceeds and cost
+       separately, because under average cost every unit carries the identical cost */
+    if(!(t.fid in split)) split[t.fid]=mfUnitSplits(t.fid);
+    const s=split[t.fid]&&split[t.fid][id], tot=s?s.long+s.short+s.unk:0;
+    if(s&&tot>1e-9){ long+=gain*(s.long/tot); short+=gain*(s.short/tot); unk+=gain*(s.unk/tot); }
+    else unk+=gain;                      /* countable, but its age is not knowable */
   }
-  return {net,n,skipped};
+  return {net,n,skipped,long,short,unk};
 }
 function mfReturns(){
   const F=mfunds(); let inv=0,cur=0;
@@ -1764,7 +1795,8 @@ function combinedCagr(){
 function bookedFY(){
   const [a,b]=fyWindow(0);
   const s=realisedWin(a,b), m=mfRealisedWin(a,b);
-  return {net:s.net+m.net, n:s.n+m.n, left:s.naked+m.skipped};
+  return {net:s.net+m.net, n:s.n+m.n, left:s.naked+m.skipped,
+          long:s.long+m.long, short:s.short+m.short, unk:s.unk+m.unk};
 }
 function homeHeroHTML(t){
   const m=mfTotals(), bk=bookedFY();
@@ -1781,6 +1813,13 @@ function homeHeroHTML(t){
       '<div class="r"><div class="hk tight">P&L booked (Current FY)</div><div class="hv mono '+cls(bk.net)+'">'+
         (bk.n?skfmt(bk.net):'—')+'</div></div>'+
     '</div>'+
+    /* the split only earns its row once something has actually been booked */
+    (bk.n?'<div class="ltst">'+
+      '<div><div class="hk">Long term · held &gt; 1 yr</div>'+
+        '<div class="ltv mono '+cls(bk.long)+'">'+skfmt(bk.long)+'</div></div>'+
+      '<div class="r"><div class="hk">Short term</div>'+
+        '<div class="ltv mono '+cls(bk.short)+'">'+skfmt(bk.short)+'</div></div>'+
+    '</div>':"")+
     '<div class="gl"><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
     (()=>{const c=combinedCagr();
@@ -1805,15 +1844,20 @@ function homeHTML(t){
   const nFunds=Object.values(mfunds()).filter(f=>mfCounted(f)&&(+f.units||0)>0).length;
   /* Only ever on screen when something genuinely could not be worked out. Silence is the
      normal state; a permanent caveat under a figure becomes wallpaper and stops being read. */
-  const left=bookedFY().left;
+  const bk=bookedFY(), notes=[];
+  if(bk.left) notes.push(bk.left+' sale'+(bk.left===1?"":"s")+' this year '+
+    (bk.left===1?"is":"are")+' left out of the booked figure — what '+(bk.left===1?"it":"they")+
+    ' originally cost you isn’t in your records, so there is no profit to work out from it. '+
+    'Everything else is counted.');
+  if(Math.abs(bk.unk)>=1) notes.push('<b class="mono">'+skfmt(bk.unk)+'</b> of that is in neither '+
+    'the long nor the short term figure. Those units were already there when the holding came '+
+    'into the app, with no purchase date behind them, so how long you had held them isn’t on '+
+    'record — and putting them in the wrong half would be worse than leaving them out.');
   return '<div class="hlist">'+
     row("stocks","Stocks",t.cur,t.pl,t.plPct,nStocks+" holdings · live NSE prices")+
     row("mf","Mutual funds",m.cur,m.pl,m.plPct,nFunds?nFunds+" funds · NAV updates daily":"tap to add funds")+
     '</div>'+
-    (left?'<p class="hint" style="padding:0 4px">'+left+' sale'+(left===1?"":"s")+' this year '+
-      (left===1?"is":"are")+' left out of the booked figure — what '+(left===1?"it":"they")+
-      ' originally cost you isn’t in your records, so there is no profit to work out from it. '+
-      'Everything else is counted.</p>':"");
+    notes.map(x=>'<p class="hint" style="padding:0 4px">'+x+'</p>').join("");
 }
 
 /* ---------- funds view ---------- */
@@ -2094,6 +2138,46 @@ function mfReleasedCosts(fid){
      authoritative state working backward, so trouble further back cannot corrupt what was
      already computed. Anything not reached is simply absent, and gets disclosed. */
   return costs;
+}
+/* How many of the units a payout sold had been held over a year. Funds are accounted at
+   AVERAGE cost, so there are no lots to read this off - this builds them from the purchase
+   history purely to get the PROPORTION, and the rupees are then apportioned by it. That is
+   exact under average cost, where every unit carries the same cost, and it guarantees long +
+   short + unknown equals the total the booked figure already shows - a split that does not
+   add up to its own total is worse than no split.
+   Runs FORWARD, unlike mfReleasedCosts, because holding period is a question about
+   chronology: the oldest units are the ones sold first.
+   Units the records cannot explain - a holding that came into the app with no purchase
+   history behind it - are seeded as ONE opening lot carrying no date, and come back as
+   `unk`. Their age is genuinely unrecorded, and guessing it would put real money in the
+   wrong bucket, which is the one outcome this split must never produce. */
+function mfUnitSplits(fid){
+  const f=mfunds()[fid]; if(!f) return null;
+  const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===fid&&t.date)
+    .sort((a,b)=>a[1].date<b[1].date?-1:a[1].date>b[1].date?1:0);
+  let net=0;
+  for(const [,t] of list){
+    const u=mfTxUnits(t,f); if(u===null) return null;   /* a tx we cannot size - no split */
+    if(!u) continue;
+    net+=(t.kind==="sip"||t.kind==="in")?u:-u;
+  }
+  const open=(+f.units||0)-net;
+  if(open<-0.01) return null;            /* records claim more units than the fund holds */
+  const lots=open>0.0001?[{q:open,d:null}]:[];
+  const out={};
+  for(const [id,t] of list){
+    const u=mfTxUnits(t,f); if(!u) continue;
+    if(t.kind==="sip"||t.kind==="in"){ lots.push({q:u,d:t.date}); continue; }
+    let r=u,L=0,S=0,U=0;
+    while(r>1e-9&&lots.length){
+      const l=lots[0],take=Math.min(l.q,r);
+      if(!l.d) U+=take; else if(heldLong(l.d,t.date)) L+=take; else S+=take;
+      l.q-=take; r-=take;
+      if(l.q<=1e-9) lots.shift();
+    }
+    out[id]={long:L,short:S,unk:U+r};
+  }
+  return out;
 }
 /* A payout that still needs its fund's NAV history to be priced: fetch the history once,
    then re-render so the booked figure fills itself in. Read-only, like mfFillTxNavs. */

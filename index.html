@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v91";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v92";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -3413,6 +3413,50 @@ function txnSheet(id,side){
 }
 
 /* edit stock: symbol, pool, manual prices, history */
+/* Correct a lot in place - quantity, price, date - and NOTHING else on the row moves:
+   `keep`, `noLot`, `seq` and `stockId` all ride through untouched. That is the whole point.
+   An imported lot being CORRECTED must not turn into a new cash flow: Flows skips in-app
+   txns dated on or before `history.end` unless they carry `keep:1`, so re-adding a
+   corrected lot through the Buy sheet (which stamps `keep:1`) would invent an outflow that
+   never happened and double-count against the ledger row it came from. Editing in place is
+   the only safe way to fix a mis-imported lot.
+   Stocks had only Remove until v92, while funds have been correctable since v86 - the gap
+   surfaced when a real import split a same-day buy/sell pair the wrong way and the owner
+   had no way to put it right. ₹0 is a legal price (bonus and split shares). */
+function stockTxSheet(id){
+  if(guestGuard()) return;
+  if(maskGuard()) return;
+  const t=txns[id]; if(!t) return;
+  const s=stocks[t.stockId]||{};
+  openSheet("Correct entry",
+    '<p class="hint" style="margin-top:4px"><b style="color:var(--ink)">'+esc(s.name||"")+'</b> \u00b7 '+
+      esc(String(t.side||"").toUpperCase())+' recorded on '+esc(t.date||"")+
+      '. Fixing it here changes only this line \u2014 it never becomes a new transaction.</p>'+
+    '<div class="f2"><div class="f"><label>Quantity</label><input id="xQ" class="mono" inputmode="decimal" value="'+(+t.qty||0)+'"></div>'+
+    '<div class="f"><label>Price</label><input id="xP" class="mono" inputmode="decimal" value="'+(+t.price||0)+'"></div></div>'+
+    '<div class="f"><label>Date</label><input id="xD" type="date" value="'+esc(t.date||today())+'"></div>'+
+    '<div class="hint" id="xPrev" style="margin-top:2px"></div>'+
+    '<div class="err" id="xErr"></div>'+
+    '<button class="primary" id="xGo">Save the correction</button>');
+  const prev=()=>{
+    const el=$("#xPrev"); if(!el) return;
+    const q=parseFloat($("#xQ").value), p=parseFloat($("#xP").value);
+    el.innerHTML=(q>0&&p>=0)
+      ? "This line becomes <b>"+qfmt(q)+"</b> \u00d7 "+price(p)+" = <b>"+rupee(q*p)+"</b>."
+      : "Enter a quantity and a price.";
+  };
+  prev();
+  ["#xQ","#xP"].forEach(sel=>$(sel).addEventListener("input",prev));
+  $("#xGo").addEventListener("click",()=>{
+    const q=parseFloat($("#xQ").value), p=parseFloat($("#xP").value), d=$("#xD").value;
+    if(!(q>0)) return showErr("#xErr","Quantity must be more than zero.");
+    if(!(p>=0)) return showErr("#xErr","Price cannot be negative.");
+    if(!d) return showErr("#xErr","Pick the date.");
+    const c=txns[id]; if(!c) return;
+    c.qty=q; c.price=p; c.date=d;      /* keep / noLot / seq deliberately untouched */
+    saveRemote(); closeSheet(); render();
+  });
+}
 function histSheet(id){
   if(guestGuard()) return;
   const s=stocks[id];
@@ -3432,9 +3476,10 @@ function histSheet(id){
       '<div class="trow"><div class="d8 mono">'+esc(t.date)+'</div>'+
       '<div class="side '+(t.side==="buy"?"gain":"loss")+'">'+t.side.toUpperCase()+'</div>'+
       '<div class="q mono" style="flex:1">'+qfmt(t.qty)+' × '+price(t.price)+' = '+rupee(t.qty*t.price)+'</div>'+
+      '<button data-txe="'+t.id+'">Edit</button>'+
       '<button class="del" data-tid="'+t.id+'">Remove</button></div>').join("")
     :'<p class="hint">No transactions.</p>')+
-    '<p class="hint">Remove a row to correct a mistake. ₹0 lots are bonus/split shares.</p>');
+    '<p class="hint">Tap Edit to correct a line, or Remove to drop it. ₹0 lots are bonus/split shares.</p>');
   let pool=s.pool==="ipo"?"ipo":"core";
   $("#ePool").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;pool=b.dataset.v;
     $("#ePool").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));});
@@ -3447,6 +3492,8 @@ function histSheet(id){
     saveRemote(); closeSheet(); pollQuotes();
   });
   $("#sheetBody").addEventListener("click",e=>{
+    const ed=e.target.closest("[data-txe]");
+    if(ed){ stockTxSheet(ed.dataset.txe); return; }
     const b=e.target.closest(".del"); if(!b) return;
     if(b.dataset.armed!=="1"){ b.dataset.armed="1"; b.textContent="Sure?"; return; }
     delete txns[b.dataset.tid]; saveRemote();

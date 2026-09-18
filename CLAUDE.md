@@ -574,6 +574,37 @@ named the label and the long-term rule himself; keep the wording unless he chang
   broker import that adds new post-`history.end` sell rows will need the same gl/gs
   treatment or those sales will sit in the disclosure count.
 
+### Correcting a share lot (v92)
+
+`stockTxSheet(id)` - an **Edit** button on every row of the stock history in `histSheet()`,
+opening a sheet that changes quantity, price and date **in place**. `keep`, `noLot`, `seq`
+and `stockId` ride through untouched, and that is the entire point:
+
+- Flows skips in-app txns dated on or before `history.end` unless they carry `keep:1`. A
+  mis-imported lot that is merely being CORRECTED must not become a new cash flow, so
+  "Remove it and add it again through Buy" is **not** a substitute - the Buy sheet stamps
+  `keep:1`, which invents an outflow that never happened and double-counts against the
+  ledger row the lot came from. There is a test asserting exactly this contrast.
+- Stocks had only Remove until now while funds have been correctable since v86. The gap
+  surfaced on real data: an import split a same-day buy/sell pair the wrong way (see below),
+  and the owner had no way to put it right - he reported "the app is not allowing me to
+  edit", and he was right, the control did not exist. Claude had told him to edit a price
+  and date that no sheet offered; check the UI before giving UI instructions.
+- ₹0 is a legal price (bonus and split shares), so the guard is `price >= 0`, not `> 0`.
+
+**Same-day pairs and imports.** Groww (and the exchange) net a same-day buy and sell against
+each other; a plain-FIFO importer instead eats the oldest lot and keeps the same-day buy.
+That is what happened to a real holding here, leaving its cost basis ~₹3.3k light and its
+average well below the broker's. v91 taught `holding()`/`realisedWin()` to day-net going
+forward, but **already-imported lots keep whatever shape the old import gave them** - they
+are stored rows, not a replay. If a holding's average disagrees with the broker's, look for
+a same-day pair in its ledger first.
+
+**Broker screens are not always the truth either.** Groww's holdings screen carries shares
+TRANSFERRED IN at zero cost, so its "invested" figure under-reads for any position that was
+partly moved in from another demat. One holding was flagged as broken on that basis and was
+in fact correct - always reconcile against the ledger's own buy rows before "fixing" data.
+
 ## Data durability (do not weaken)
 
 **Relay v15 write guard covers the WHOLE document**, not just stocks/txns: `shrunk_(old,inc)`

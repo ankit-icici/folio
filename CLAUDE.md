@@ -680,26 +680,19 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   the source for them, the Groww order history is. Edelweiss reconciles exactly (the whole
   ICICI quantity was one Groww purchase), and the Nuvama holding is its demerger entitlement
   at the exact scheme ratio, so it needs no purchase of its own.
-- **360 One: narrowed, NOT settled - and an earlier "₹11,000 is missing" claim was WRONG.**
-  Established from the broker: only **22** shares were ever bought (20 May 2021, ₹24,221).
-  The identical-looking 22-share order the previous evening was **REJECTED for insufficient
-  balance** - its detail page says "Qty 0/22". *A Groww order list shows rejected orders
-  looking exactly like filled ones; open the order detail before counting it.* Those 22 grew
-  to 88 through corporate actions (48 now in the ICICI demat + 40 sold in Dec-23/Jul-24), so
-  the whole cost basis of all 88 is that one ₹24,221.
-  The app assigns ₹2,202 of it to the surviving 48. Whether that is right depends on which
-  convention the brokers applied, and the two give opposite answers:
-  - *Averaging* (what a Groww holdings screen shows): all 88 carry ₹275.24, so the 48 should
-    carry ~₹13,200 and the app would be ~₹11,000 light.
-  - *Tax treatment* (bonus shares at nil cost, FIFO eating the originals first): the 40 sold
-    would have absorbed nearly the whole ₹24,221, leaving the 48 at close to nil - and the
-    app's ₹2,202 would be about right.
-  Claude asserted the first to the owner before checking, then had to walk it back. **Do not
-  repeat that.** The evidence that settles it is the broker's own capital-gain figure for
-  those 2023/24 sales: Groww's *Stocks P&L* report renders on screen (Profile -> Reports ->
-  Stocks P&L) but only offers preset periods plus a Custom range whose date pickers are not
-  plain inputs; the FY 2023-24 / 2024-25 *Stocks - Capital gains* report would also answer it
-  and is a download. Neither was completed.
+- **360 One: SETTLED, and the app is right to 6 paise.** Groww's own FY 2024-25 capital-gain
+  report states the buy price for the shares sold that July as **₹550.47** - the original
+  ₹1,100.96 halved once by a bonus - against the app's ₹550.48. Feeding that back: every
+  recorded purchase totals ₹99,719.74, the 40 shares sold released 40 x ₹550.47 = ₹22,018.80,
+  leaving **₹77,700.94** against the app's stored ₹77,701. Nothing is missing.
+  Two wrong turns on the way, both worth remembering: only **22** shares were ever bought -
+  the identical 22-share order the previous evening was **REJECTED for insufficient balance**
+  ("Qty 0/22" on its detail page), and *a Groww order list renders a rejected order exactly
+  like a filled one, so open the detail before counting it*. And Claude told the owner
+  ~₹11,000 was missing, having assumed an averaging convention without checking; the broker's
+  own figure disproved it. **Get the broker's stated buy price before calling a cost basis
+  wrong** - the report is at Profile -> Reports -> Stocks - Capital gains, which takes a
+  financial-year dropdown and downloads an xlsx carrying per-lot buy date, buy price and P&L.
 - **Parag Parikh (the private fund) is SOUND where it counts.** Groww's own invested figure
   matches the app's stored cost to the rupee, and its units match too - so its card and its
   place outside every total are right. Only its historical tx list is partial (~15% of units

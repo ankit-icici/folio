@@ -619,6 +619,42 @@ TRANSFERRED IN at zero cost, so its "invested" figure under-reads for any positi
 partly moved in from another demat. One holding was flagged as broken on that basis and was
 in fact correct - always reconcile against the ledger's own buy rows before "fixing" data.
 
+### NEVER verify a holding against a broker's holdings SCREEN (2026-09-18, learnt hard)
+
+Groww's holdings **screen** and its holdings **statement** (Profile -> Reports -> Holdings ->
+Stocks - Holdings statement, an xlsx with quantity, average buy price and buy value per
+stock) **disagree**, and only the statement is trustworthy. Comparing against the screen
+caused three separate wrong conclusions in one session:
+
+- It reports a **different average** for a holding whose cost was apportioned in a demerger
+  (screen ₹719.81 vs statement ₹794.86 on the same 174 shares) - which made a genuinely
+  broken holding look like it matched, and the error was ₹13,000.
+- It reports a **different quantity and average** for a holding with transferred-in shares
+  (screen 235 @₹333.23 vs statement 216 @₹362.54 - same total), which produced a false alarm
+  that a correct holding was wrong.
+- It was simply **stale** on a third holding, producing a phantom ₹67 discrepancy that the
+  statement shows does not exist.
+
+The statement reconciled **every** holding to within a few rupees except the one real error
+below. Use it, and use the ICICI **Demat Allocation** page for that side. Both screens - the
+Groww holdings screen and ICICI's Portfolio page - are unreliable in the same way.
+
+### OPEN: the Edelweiss -> Nuvama demerger cost was never apportioned
+
+Measured against the holdings statement, 2026-09-18: **Edelweiss is overstated by ~₹13,066
+and Nuvama understated by ~₹13,055.** The app gave the Nuvama entitlement a cost
+(₹350.83/share) without taking it off Edelweiss, so the COMBINED total across the two is
+right to ₹11 - which is exactly why every total-level check passed - while each holding is
+individually wrong by ₹13,000. The tell is that the app's whole Nuvama cost is *less* than
+the statement's for just the Groww-held subset, i.e. its remaining shares imply a NEGATIVE
+cost.
+Not yet corrected: the totals to hit are known (statement + the ICICI-side share of the
+original purchase), but spreading the adjustment back across the app's reconstructed lots
+involves a judgement the lots cannot settle on their own, and doing it wrong would move
+₹14,000 to the wrong place. Agree the approach with the owner first.
+**This is the live demonstration of the demerger warning in the corporate-actions section -
+a demerger that is not apportioned hides perfectly in every portfolio-level total.**
+
 ### The full verification sweep (2026-09-18) - results
 
 Run after the owner asked for a blanket "everything is correct for ever", which was refused

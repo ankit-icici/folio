@@ -619,6 +619,41 @@ TRANSFERRED IN at zero cost, so its "invested" figure under-reads for any positi
 partly moved in from another demat. One holding was flagged as broken on that basis and was
 in fact correct - always reconcile against the ledger's own buy rows before "fixing" data.
 
+### What has actually been verified against a broker - and what has NOT (2026-09-18)
+
+The owner asked for a blanket "everything is correct, now and for ever". It was refused, with
+this inventory. **Do not upgrade any line here to "verified" without doing the work.**
+
+**Verified against an outside source:** every FY 26-27 sale (29 of them - funds to the
+registrar's report to the paisa, shares to the two brokers' statements); both purchases
+behind the four elimination-priced sales; all 12 purchases in the owner's own Groww account;
+and 9 holdings whose quantity AND average match the broker's screen to the rupee.
+
+**NOT verified, and each could put a future sale's profit out:**
+- **Zero-cost lots from corporate actions.** Several holdings carry lots recorded at ₹0
+  (bonus entitlements, and demerger children). Zero IS right for a bonus issue. It is NOT
+  automatically right for a demerger, where cost must be apportioned between parent and
+  child per the scheme - and the app has no record of which is which. A wrong apportionment
+  stays invisible until that holding is sold.
+- **Holdings whose shares sit partly in ICICI Direct.** ICICI publishes balances but no
+  cost-basis holdings view, so their ICICI-side purchase prices have never been cross-checked
+  the way the Groww side has.
+- **One holding is off by ~₹67** with quantities matching exactly - too small to chase then,
+  too unexplained to call correct.
+- **A holding that exists only at ICICI** has had no broker cross-check at all.
+- **ESOPs, and the funds with no FY payout** (the reconciliation in `mfFifo` only ran on
+  funds that actually paid out this year).
+
+**What can break in future, which no amount of past checking prevents:**
+- **Corporate actions.** The app has no feed for bonuses, splits, demergers or mergers. One
+  happens, and quantity and average silently drift from the broker until somebody notices.
+  This is the single biggest standing risk to "it stays correct".
+- **An IPO allotment produces no buy order anywhere**, so it must be entered by hand or the
+  eventual sale has no cost behind it.
+- **A trade made and not recorded** is invisible by definition.
+The app's own protection - disclosing what it cannot price - covers a MISSING cost. It cannot
+detect a WRONG one, nor a corporate action nobody told it about. Say so plainly when asked.
+
 ## Data durability (do not weaken)
 
 **Relay v15 write guard covers the WHOLE document**, not just stocks/txns: `shrunk_(old,inc)`

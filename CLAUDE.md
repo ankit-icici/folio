@@ -157,7 +157,9 @@ shares and cost basis. `cashFlows()` returns the ledger plus any in-app txn date
 `history.end`, so nothing is double-counted and new trades flow in automatically.
 
 Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n` name,
-`b` 1=buy/0=sell, `q` qty, `v` rupee value, `a` 1 = approximate date (shown as ≈ in the UI).
+`b` 1=buy/0=sell, `q` qty, `v` rupee value, `a` 1 = approximate date (shown as ≈ in the UI),
+and on a sell row optionally `g` (broker-stated realised gain, signed rupees) and `lt`
+(1 = held over a year) - the booked-P&L figure's only source for pre-import sales (v90).
 
 - `pool:'ipo'` is the **Satellite** pool (label lives in the `POOL2` constant): counts in the
   dashboard, excluded from allocation % and the rebalance plan.
@@ -440,157 +442,108 @@ preserved across edits — see the booked-P&L section for `rc`.
   added by mistake and purges that fund's txs/sips/swps with it. The Lumpsum diary never
   moves units.
 
-### Booked P&L for the current FY (Home hero, v87)
+### Booked P&L for the current FY (Home hero, v87-v90)
 
-Introduced v87; the fund half was corrected in v88, split by holding period in v89 (both below).
-A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** — profit actually taken this
-financial year, shares and funds in one figure. Owner asked for it 2026-09-18 and named the
-label himself; keep the wording unless he changes it.
+Introduced v87; fund pricing corrected twice on the owner's word (v88, then v90); split by
+holding period in v89; pre-app sales join via the ledger in v90.
+A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** - profit actually taken this
+financial year, shares and funds in one figure, with a "Long term · held > 1 yr" /
+"Short term" breakdown row under the headline figures. Owner asked for it 2026-09-18 and
+named the label and the long-term rule himself; keep the wording unless he changes it.
 
 - **What it is NOT, and why.** He first asked for "net P&L for the FY", which most naturally
-  means *how much the whole portfolio grew since 1 April* — realised **and** unrealised. That
+  means *how much the whole portfolio grew since 1 April* - realised **and** unrealised. That
   cannot be answered: the app's first commit is **2026-09-05**, five months into FY 26-27, so
   no snapshot, no `keep-` file and no price record exists for 1 Apr 2026 to measure against.
-  The oldest monthly restore point can only be `keep-…-2026-09`. Presented with that, the
-  owner chose the booked-only figure. **Do not quietly widen it later**: the full version is a
-  real, viable feature, but it needs historical closes (Yahoo serves them on the same chart
-  endpoint the relay already calls, via `period1`/`period2`; mfapi already serves NAV history
-  and `mfNavOn()` already reads it) — which means a relay change, a new deployment and a new
-  `/exec` URL. That is the owner's call, not a gap to paper over with an estimate.
-  From FY 27-28 onward the app *will* hold its own 1 April record, so the baseline problem
-  solves itself for future years — but never for this one.
-- `fyWindow(off)` is now the **single** definition of a financial year as dates.
-  `flowWindow()` was rewritten to call it, so the Flows FY chip and this tile can never come
-  to disagree about which trades fall inside the year. It rolls over on its own every 1 April
-  because `fyStart()` reads the clock — verified against a stubbed clock at 31 Mar, 1 Apr and
-  mid-year, for two consecutive years.
-- `realisedWin(from,to)` — shares. Per **sale**, FIFO: proceeds less the cost of the exact
-  lots consumed. Note this is a different question from `realised(sid)` above, which is
-  whole-position cash in vs out and only means anything once a name is fully sold; do not
-  merge them. The lot walk is `holding()`'s line for line, so the two cannot drift, and
-  `noLot` rows are skipped in both.
-  - **The walk must run over every sale, in or out of the window**, or the lots standing when
-    an in-window sale arrives are the wrong ones. There is a test for exactly this.
-  - **An uncovered sale books nothing** — only the covered part counts, the rest is tallied in
-    `naked`. This is the orphan-sell rule applied to a new figure: counting it whole is what
-    once put the lifetime CAGR several points above the truth, and it is not hypothetical,
-    because an IPO allotment produces no buy order at any broker.
-- `mfRealisedWin(from,to)` — funds. `swp` and `out` only, `mfCounted` only, so HUF and private
-  money stay out exactly as they do everywhere else.
-  - Cost released is read from the tx's own **`rc`**, written from v87 by `mfRedeemSheet`,
-    `mfRecordSwpSheet` and `mfTxUnitSheet` as the amount that *actually* came off the fund's
-    cost basis (`inv` before − `inv` after), not a recomputed estimate. That is what makes the
-    figure permanently exact: a fund's average cost today is no guide to what it was on the
-    day of an older redemption.
-  - `mfTxRemath()` gained an **additive** `rc` in its return (payouts only; `null` for a SIP),
-    so a corrected payout stores a fresh one. Existing callers read only `.u`/`.i` and are
-    untouched — the v86 properties were re-proven after the change.
-  - `mfTxSheet` **scales** `rc` by the amount ratio: that sheet can change the amount and
-    never touches the NAV, so the units sold move with the amount and the cost moves in step.
-    It drops `rc` entirely if the entry stops being a withdrawal or is moved to another fund.
-  - **A pre-v87 entry has no `rc`, so `mfReleasedCosts(fid)` rebuilds it (v88).** v87 shipped
-    valuing those at the fund's average **today**; the owner rejected that outright the same
-    day — *"no it should completely match. it should consider the original cost price"* — and
-    he was right: every purchase made after a payout drags the average, so today's average
-    answers the wrong question. Measured on the test scenarios, it was out by up to
-    **₹23,529 on a ₹25,000 cost**, and it always overstated profit after a purchase at a
-    higher price. Do not reintroduce it as a fallback.
-  - The rebuild walks the fund's books **backward** from its current `units`/`inv` — the
-    authoritative pair — undoing each tx. Undoing a payout is an identity, not an estimate:
-    a redemption never moves the average, so `cost before = cost after × units before /
-    units after`. That is what `mfTxRemath()` already rewinds with. Walking backward is the
-    whole trick: it needs no knowledge of what the fund held before its records begin, so an
-    imported holding with years of untracked history still prices correctly.
-  - **Accuracy: worst case ₹1.84 across the scenario suite, typically under ₹0.50**, versus
-    ₹23,529 for what it replaced. The residual is not a modelling error — `units` is re-rounded
-    to 4dp and `inv` to whole rupees on *every* write, so walking back through a payout that
-    took a large fraction of the fund amplifies that rounding. The information is genuinely
-    gone from the books; nothing can recover it. Entries written from v87 carry `rc` and have
-    **no** error at all, so this ceiling only ever applies to the pre-v87 backlog.
-  - **`out` means two different things in this data, and the walk has to guess.** `mfRedeemSheet`
-    writes an `out` that MOVES units (and has carried a `nav` since v85); the Lumpsum diary
-    writes an `out` that explicitly does not. `mfTxUnits()` therefore reads a withdrawal with
-    no `nav` as a diary entry, and `in` as never moving units (nothing in the app writes one
-    that does). That is right for everything the app has written since v85; the exposure is an
-    app redemption from 5–16 Sep 2026, or an import that used `in` for real purchases.
-    The walk cannot detect that locally, so it **stops** rather than pressing on whenever units
-    go materially negative, and everything it did not reach is disclosed instead of guessed.
-  - It also stops at **a payout that emptied the fund** — from 0 units and 0 cost there is no
-    average to walk back through. Such an entry is skipped and counted, never booked at zero
-    cost, which would read as pure profit.
-  - Whatever the walk *did* reach is sound on its own, because each figure derives from the
-    fund's authoritative current state working backward; trouble further back cannot corrupt
-    what was already computed. So a stop keeps its results rather than discarding them — an
-    earlier guard that threw the whole fund away was deleted for binning answers that were
-    right to the paisa. **Its tolerance must stay above the app's own rounding** (`slack` grows
-    with the tx count); too tight a bound there is not a safe default, it is a silent data loss.
-  - `mfNavCached()` is the synchronous cache-only NAV lookup the walk needs inside a render;
-    `mfWarmNavs()` (called from `bind()`, beside `mfFillTxNavs()`) fetches any missing history
-    once and re-renders. Both are read-only and never write to the document.
-- Anything skipped or uncovered surfaces as one plain line under the Home list, and **only**
-  when the count is non-zero — a permanent caveat under a figure becomes wallpaper.
-  The tile shows **"—"**, not ₹0, when nothing was sold all year: "nothing to report" and
-  "sold up and came out exactly level" are different statements.
-#### Long term vs short term (v89)
+  Presented with that, the owner chose the booked-only figure. **Do not quietly widen it
+  later** - the full version needs historical closes through the relay (a new deployment and
+  `/exec` URL) and stays an open offer in the backlog. From FY 27-28 the app holds its own
+  1 April record, so the baseline problem solves itself for future years - never for this one.
+- `fyWindow(off)` is the **single** definition of a financial year as dates; `flowWindow()`
+  calls it, so Flows and this tile can never disagree about which trades fall in the year.
+  Rolls over on its own each 1 April (`fyStart()` reads the clock; proven on a stubbed clock).
+- **Three sources feed `bookedFY()`, each covering what only it can know.** `left` counts
+  every sale the figure is NOT showing, from any of them, and drives the one disclosure line
+  under the Home list (rendered only when non-zero; a permanent caveat becomes wallpaper).
+  The tile shows "—", not ₹0, when nothing was sold all year.
 
-Owner asked for the booked figure split by holding period on 2026-09-18, and gave the rule
-himself: **long term = the units sold had been held more than a year**. Shown as a subordinate
-row under the headline figures, "Long term · held > 1 yr" and "Short term".
-
-- `heldLong(buyD,sellD)` via `plusYear()`: the sale must fall **strictly after** the first
-  anniversary, so selling ON the anniversary is short term. 29 Feb rolls to 1 Mar.
-- **It is a holding-period split, not a tax computation, and must not quietly become one.**
-  The rate and even the twelve-month threshold vary by instrument — debt and many hybrid funds
-  get no equity treatment at all — and the app knows nothing about a fund's category. Said
-  plainly to the owner when it shipped.
-- **Shares are exact.** FIFO already decides which lots a sale ate; each lot now carries its
-  buy date, so the split falls out of the same walk. No second pass, nothing estimated.
-- **Funds have no lots at all** — they are accounted at average cost — so `mfUnitSplits(fid)`
-  builds them from the purchase history purely to get the **proportion** of units that were
-  over a year old, and the rupees are apportioned by it. Under average cost every unit carries
-  the identical cost, so apportioning the gain by unit share is exactly the same as splitting
-  proceeds and cost separately. That is what guarantees **long + short + unknown = the total**;
-  a split that does not add up to its own total is worse than no split, so keep that invariant
-  (there is a test asserting it on every fund scenario).
-  - It runs **forward**, unlike `mfReleasedCosts()`, because holding period is a question about
-    chronology and the oldest units are the ones sold first. Two walks in opposite directions
-    over the same data is deliberate, not an oversight: cost must come backward from the
-    authoritative current state, age must come forward from the purchases.
-  - Units the records cannot explain are seeded as **one opening lot with no date** (computed
-    as `f.units` minus the net of every recorded tx) and come back as `unk`. Their age is
-    genuinely unrecorded. **Do not invent one** — not the first tx's date, not "probably long".
-    Putting real money in the wrong half is the one failure this split must never produce.
-  - So an imported fund with no purchase history behind it reports its whole gain as unknown.
-    That is correct and is disclosed on screen; the fix is to get the fund's instalment history
-    into the app, not to soften the rule.
-- `.ltst` is its own two-column block rather than a reuse of `.cagr`: an inline
-  "Long term +₹15,385" pair wraps at 375px and strands the `+` on a line of its own. Label
-  above value, 15px, so it reads as a breakdown of the figure above it rather than a fifth
-  headline.
-- `.hk.tight` exists because "P&L BOOKED (CURRENT FY)" wraps to two lines at 375px, which
-  pushes its figure down and breaks the row's alignment with the cell beside it. Tightened,
-  deliberately **not** `nowrap`, so a narrower phone wraps untidily rather than clipping the
-  year off the end. Measured after the change: all four labels one line, the two values in
-  row 2 within 1px of each other.
-- Verified by extracting the shipped functions and running them in node (**64 assertions**:
-  12 share cases incl. FIFO order, the previous-FY boundary at 31 Mar/1 Apr, lots eaten by an
-  earlier out-of-window sale, `noLot`, orphan and partly-covered sales, intraday round trip;
-  12 fund cases incl. stored-vs-rebuilt cost, the emptied-fund skip, HUF/private exclusion;
-  14 clock and remath cases; **9 cost-rebuild cases; 17 long/short cases** covering the
-  anniversary boundary to the day, leap days, FIFO across an old and a new lot, a long-term
-  loss, undated lots, fund payouts cutting through both lots, the unknown-age opening block,
-  and the sums-to-the-total invariant), plus a live render at phone width
-  driven with synthetic data in the real document shape — privacy shutter, the "—" state and
-  the uncounted-sale line all confirmed on screen.
-  - The cost-rebuild suite is the one worth keeping in step. It **forward-simulates exactly
-    what the sheets write** (rounding units to 4dp and cost to the rupee on every write, as
-    the app does), records what each payout really released, then checks the backward walk
-    recovers it: purchases after a payout at much higher and much lower prices, SIP and SWP
-    running together, back-to-back payouts, a Redeem mixed with SWPs, a payout at a loss, an
-    imported opening holding, the owner's own SWP-into-another-fund rhythm, and a 40-entry
-    history. It prints the worst error for the new and old methods side by side — rerun it
-    after touching any of this, and expect the new number to stay near ₹1.
-- **Not yet confirmed against the owner's real data** (see below).
+  1. **`realisedWin(from,to)` - share sales the app's own lots can price.** Per sale, FIFO:
+     proceeds less the cost of the exact lots consumed; each lot carries its buy date, so the
+     long/short split falls out of the same walk. The lot walk is `holding()`'s line for
+     line (`noLot` skipped in both), and it must run over EVERY sale, in or out of the
+     window, or the lots standing when an in-window sale arrives are wrong. An uncovered
+     sale books only its covered part and tallies `naked` - counting it whole is what once
+     put the lifetime CAGR several points above the truth (an IPO allotment produces no buy
+     order anywhere, so this is not hypothetical). A lot with no date lands in `unk`, never
+     silently in either column.
+  2. **`mfRealisedWin(from,to)` - fund redemptions, priced the REGISTRAR'S way (v90).**
+     `mfFifo(fid)` replays the fund's whole recorded history into dated lots and prices every
+     redemption at what each unit cost when bought, oldest first. **History of this rule:**
+     v87 shipped valuing old payouts at the fund's average *today* - the owner rejected that
+     the same day ("it should consider the original cost price"), and he was right: purchases
+     after a payout drag the average. v88 rebuilt the average *as it stood on the day*
+     (backward walk) - exact under the app's own books, but the owner then reconciled against
+     his portal's registrar-data capital gain report, which prices FIFO at actual purchase
+     NAVs, and average-vs-FIFO differed by thousands of rupees on the same payouts.
+     **The registrar's method wins - it is the taxman's and the owner's
+     reference.** v90 replaced the v88 backward walk (`mfReleasedCosts`) and the v89
+     proportion walk (`mfUnitSplits`) with the one `mfFifo()`; the long/short split now comes
+     off the lots directly.
+     - Classification learnt from the real data, not assumed: `sip` **and** `in` are
+       purchases (a lumpsum arrives as `in`; treating it as unit-less invented a phantom
+       "opening block" of units on a real fund that was in truth a recorded deposit),
+       `swp` and `out`
+       are redemptions. Units = amount / NAV on the day: a nav stored on the tx wins, else
+       the fund's official history (`mfNavCached`, memoised; `mfWarmNavs()` fetches once per
+       fund per session for any fund with an FY payout and un-navved txs, then re-renders -
+       until it lands, that fund's payouts sit in `skipped` and the note explains).
+     - **Honesty gates:** a tx that cannot be priced breaks the replay (everything after is
+       unknowable; redemptions before it stand); a redemption the lots cannot cover beyond
+       NAV-rounding dust breaks too; and the replay must END on the fund's actual units
+       within a slack scaling with tx count, else the fund books NOTHING. The gap a missing
+       lumpsum leaves (hundreds of units) dwarfs the slack, so the gate fires when it must -
+       there is a test deleting a real recorded lumpsum to prove it.
+     - **Proven against the owner's real data on 2026-09-18**: every fund with a payout this
+       year, replayed over its full multi-year history - long, short and total each landed
+       within **12 paise** of the registrar's report, including a small short-term sliver
+       the registrar also shows (units bought weeks before their sale). The residue is
+       NAV-date noise (order date vs allotment date, stamp duty inside the amounts).
+       No figures here: this repo is public; the numbers live in the owner's portal.
+     - **Deliberate divergence from the fund's own books:** `inv`, the Redeem preview and the
+       v86 rewind stay average-cost - they are the running books - while booked P&L follows
+       the registrar. So unrealised (average) + booked (FIFO) do not sum to a lifetime
+       total; that is the price of matching the portal, and it is the owner's explicit
+       choice. `rc` on payout txs is still WRITTEN (audit trail of what the books did) but
+       nothing reads it for gains any more; the record/redeem/correction sheets keep writing
+       it and the edit sheets keep it fresh, exactly as v87/v88 built.
+  3. **`ledgerWin(from,to)` - sales that predate the app's records (v90).** The imported
+     ledger's FY sell rows may carry `g` (the broker's own realised gain, signed rupees) and
+     `lt` (1 = broker says held > 1 yr), written once from broker statements. A position
+     imported after its sale has no lots for it, so this is the only honest source. An
+     in-window sell row without `g` counts in `left` and is disclosed. Buys never carry `g`;
+     rows outside the window cost nothing.
+- **The long/short rule** (`heldLong` via `plusYear`): the sale must fall **strictly after**
+  the first anniversary - selling ON the anniversary is short; 29 Feb rolls to 1 Mar. It is
+  a holding-period split, not a tax computation (debt/hybrid thresholds differ and the app
+  does not know a fund's category) - said plainly to the owner when it shipped. Funds no
+  longer contribute to `unk` (a priced lot always has a date); stocks still can (undated lot).
+- `.ltst` is its own two-column block (label above value, 15px) because an inline pair wraps
+  at 375px and strands the sign on its own line; `.hk.tight` keeps the tile's long label to
+  one line the same way.
+- Verified by extracting the shipped functions and running them in node - **65 assertions**
+  across six files: shares (FIFO order, FY boundary to the day, lots eaten by out-of-window
+  sales, `noLot`, orphan/partly-covered sales, intraday), funds (both-lots pricing, losses,
+  emptied-fund-with-history now booking in full, HUF/private exclusion, the units gate),
+  clock/remath, the ledger source, the long/short boundary (anniversary day, leap days,
+  undated lots), and **the real-data fixture suite** (`t_fifo.js`): the owner's actual fund
+  histories + official NAV history vs the registrar's actual FY report, plus gate tests on
+  mutated copies. Those fixtures live in the session scratchpad only - **they are the
+  owner's real data and must never enter this repo.** Also rendered live at phone width:
+  tile, split row, privacy shutter, "—" state, disclosure line.
+- **Data patch still owed when this note was written**: the FY sell rows in the ledger have
+  no `g`/`lt` yet. The ICICI-side row's figure comes exactly from its P&L statement; the
+  Groww-side rows take theirs from Groww's P&L report. Until the patch
+  lands, those sales sit in the disclosure count - real money the tile is not yet showing.
 
 ## Data durability (do not weaken)
 

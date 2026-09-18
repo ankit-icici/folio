@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v90";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v91";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -738,13 +738,28 @@ function stockTxns(sid){
   return Object.entries(txns).filter(([,t])=>t.stockId===sid).map(([id,t])=>({id,...t}))
     .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.seq||0)-(b.seq||0));
 }
+/* Lot consumption is DAY-NETTED FIFO (v91): a sale first consumes shares bought the SAME
+   day - whatever the intraday sequence, because the exchange nets a day's buys and sells
+   into one obligation - and only then the oldest lots. Plain FIFO booked a same-day round
+   trip against an old cheap lot: the broker's statement showed it as a small intraday loss
+   while the app claimed a gain, AND the remaining holding's average drifted off the
+   broker's. dayNetOrder() is the one definition; holding() and realisedWin() both use it
+   and must stay in step, or booked P&L and the live holding will disagree about which lots
+   remain. Same-day buys are ordered before same-day sells for lot purposes ONLY - display
+   order and stockTxns() itself are untouched. */
+const dayNetOrder=ts=>[...ts].sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:
+  (a.side===b.side?(a.seq||0)-(b.seq||0):(a.side==="buy"?-1:1)));
 function holding(sid){
   const lots=[];
-  for(const t of stockTxns(sid)){
+  for(const t of dayNetOrder(stockTxns(sid))){
     if(t.noLot) continue; /* flow-only record: already reflected in imported lots */
-    if(t.side==="buy") lots.push({q:t.qty,p:t.price});
+    if(t.side==="buy") lots.push({q:t.qty,p:t.price,d:t.date});
     else{ let r=t.qty;
-      while(r>0&&lots.length){ const l=lots[0],take=Math.min(l.q,r); l.q-=take; r-=take; if(l.q<=1e-9)lots.shift(); } }
+      /* same-day lots first (the day-net), then oldest */
+      lots.sort((x,y)=>(x.d===t.date?0:1)-(y.d===t.date?0:1));
+      while(r>0&&lots.length){ const l=lots[0],take=Math.min(l.q,r); l.q-=take; r-=take; if(l.q<=1e-9)lots.shift(); }
+      lots.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:0);
+    }
   }
   let qty=0,inv=0; for(const l of lots){qty+=l.q;inv+=l.q*l.p;}
   const s=stocks[sid]||{}, cp=s.price||0, pc=s.prevClose||cp;
@@ -803,11 +818,14 @@ function realisedWin(from,to){
   let net=0,n=0,naked=0,long=0,short=0,unk=0;
   for(const sid of Object.keys(stocks)){
     const lots=[];
-    for(const t of stockTxns(sid)){
+    for(const t of dayNetOrder(stockTxns(sid))){
       if(t.noLot) continue;
       const q=+t.qty||0, p=+t.price||0;
       if(t.side==="buy"){ lots.push({q,p,d:t.date}); continue; }
       let r=q,cost=0,got=0,lq=0,lc=0,sq=0,sc=0,uq=0,uc=0;
+      /* same-day lots first - the day-net, exactly as holding() consumes. A same-day slice
+         lands in `short` (heldLong is false for it), matching where the split puts it. */
+      lots.sort((x,y)=>(x.d===t.date?0:1)-(y.d===t.date?0:1));
       while(r>1e-9&&lots.length){
         const l=lots[0],take=Math.min(l.q,r);
         cost+=take*l.p; got+=take;
@@ -819,6 +837,7 @@ function realisedWin(from,to){
         l.q-=take; r-=take;
         if(l.q<=1e-9) lots.shift();
       }
+      lots.sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:0);
       /* the walk above must run for EVERY sale, in or out of the window, or the lots
          standing when an in-window sale arrives would be the wrong ones */
       if(!(t.date>=from&&t.date<=to)) continue;
@@ -1776,20 +1795,25 @@ function combinedCagr(){
 /* Booked profit on sales that predate the app's own records - the imported ledger rows.
    A position imported after its sale carries no lots for that sale, so realisedWin() can
    never price it; the truth lives only in the broker's own statement. A ledger SELL row may
-   therefore carry `g` (the broker-stated realised gain, rupees, signed) and `lt` (1 = the
-   broker says the shares were held over a year), written once from the broker statements -
-   ICICI's P&L statement and Groww's P&L report - on 2026-09-18. The row's q/v stay what the
-   ledger said; g/lt add what only the broker knew. A sell row inside the window WITHOUT a
-   `g` is counted in `unpriced` and disclosed - it is real money the figure is not showing.
-   Buys never carry g. Rows outside the window are ignored, so old FYs cost nothing. */
+   therefore carry `gl` and/or `gs` - the broker-stated realised gain in rupees, split into
+   its long-term and short-term parts - written once from the broker statements on
+   2026-09-18. Two fields, not one gain plus a flag, because a single broker fill can be a
+   composite: one 65-share sale in the real data was matched by the broker against six lots,
+   one of them short-term - and splitting the ledger row instead would change what Flows
+   shows. The row's q/v stay what the ledger said; gl/gs add what only the broker knew.
+   A sell row inside the window carrying NEITHER is counted in `unpriced` and disclosed -
+   real money the figure is not showing. Buys never carry them; rows outside the window are
+   ignored, so old FYs cost nothing. Intraday and buyback gains from the statements go in
+   `gs`: held-for-hours is certainly not held-over-a-year, and the tile counts money booked,
+   not tax categories. */
 function ledgerWin(from,to){
   const led=(meta.history&&meta.history.ledger)||[];
   let net=0,n=0,long=0,short=0,unpriced=0;
   for(const l of led){
     if(l.b||!l.d||l.d<from||l.d>to) continue;
-    if(l.g==null||!isFinite(+l.g)){ unpriced++; continue; }
-    const g=+l.g; net+=g; n++;
-    if(l.lt) long+=g; else short+=g;
+    const gl=l.gl!=null&&isFinite(+l.gl)?+l.gl:null, gs=l.gs!=null&&isFinite(+l.gs)?+l.gs:null;
+    if(gl===null&&gs===null){ unpriced++; continue; }
+    long+=gl||0; short+=gs||0; net+=(gl||0)+(gs||0); n++;
   }
   return {net,n,long,short,unpriced};
 }

@@ -631,11 +631,15 @@ Run after the owner asked for a blanket "everything is correct for ever", which 
   showed above its Groww quantity was matched exactly by the ICICI demat: the four gaps came
   out at exactly the ICICI figure, share for share. The employer bank's shares sit in that
   demat too and stay out of the app by design (ESOP rule above).
-- **One real error found: an IPO application recorded as a full allotment.** A ledger row
-  carried the applied quantity where only half was allotted, so the app doubled that holding
-  and its cost. This is the mirror of the known "an IPO allotment produces no buy order"
-  trap: an application is not an allotment, and the imported ledger cannot tell them apart.
-  **Check any IPO-dated row against the broker's holdings before trusting its quantity.**
+- **A holding flagged as wrong turned out to be RIGHT - count the accounts before calling an
+  error.** One IPO holding showed double the quantity of the only account it could be found
+  in, and was reported to the owner as a doubled import. He then produced a THIRD broker
+  account holding an identical allotment: the app's combined figure was correct all along.
+  The lesson is the recurring one on this project - the app is the combined view of several
+  demats, and "not in the accounts I can see" is not the same as "not held". Establish the
+  full list of accounts from the owner BEFORE concluding a quantity is wrong. Two accounts
+  can hold identical IPO allotments (same lot size, same issue price), so identical figures
+  are not evidence of a duplicate.
 - **Zero-cost lots are a corporate-action artefact and mostly fine, with one caveat.** Two
   holdings carry a ₹0 lot paired with each pre-bonus purchase, dated with that purchase -
   correct in quantity, and correct in cost (a bonus share does have nil cost). But the DATE

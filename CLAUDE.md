@@ -675,7 +675,28 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   automatically right for a demerger, where cost must be apportioned between parent and
   child per the scheme - and the app has no record of which is which. A wrong apportionment
   stays invisible until that holding is sold.
-- **ICICI-side purchase PRICES.** Quantities are now reconciled exactly (above), but ICICI
+- **The ICICI-held shares were BOUGHT IN GROWW and transferred** - the owner said so when
+  Claude proposed downloading ICICI statements, and he is right: ICICI statements are not
+  the source for them, the Groww order history is. Edelweiss reconciles exactly (the whole
+  ICICI quantity was one Groww purchase), and the Nuvama holding is its demerger entitlement
+  at the exact scheme ratio, so it needs no purchase of its own.
+- **360 One does NOT reconcile and is the one genuine open doubt.** Its stocks/txns lots are
+  a RECONSTRUCTION of the current position, not a trade history (the sells live only in the
+  ledger - that is the documented positions-vs-flows split). The reconstruction carries the
+  ICICI-held shares at about ₹46 each, which cannot be squared with their descending from a
+  Groww purchase of 22 at ~₹1,101 plus the bonus issues the lot shapes imply: two successive
+  1:1 bonuses are visible in another lot of the same stock (15 bought -> 15+15 at half price
+  -> 15+15 free). Depending on where the second bonus falls relative to the 2023/24 sales,
+  the cost basis of the surviving shares is understated by roughly ₹11,000. NOT corrected -
+  it needs the other Groww account's full order history to settle, and guessing would be
+  worse than the doubt. **Do not "fix" it from the lot shapes alone.**
+- **Parag Parikh (the private fund) is SOUND where it counts.** Groww's own invested figure
+  matches the app's stored cost to the rupee, and its units match too - so its card and its
+  place outside every total are right. Only its historical tx list is partial (~15% of units
+  unexplained), which affects just its own lifetime-return line and a future redemption from
+  it, which the gate would refuse and disclose. The likely cause is the documented Groww
+  lazy-load trap at import time: its order page hands back only the newest ~20 rows.
+- **ICICI-side purchase PRICES (superseded by the two entries above, kept for context).** Quantities are now reconciled exactly (above), but ICICI
   publishes no trustworthy cost-basis holdings view - its Portfolio page is user-maintained,
   and its P&L statement covers sales only. Confirming the cost of shares still held there
   means pulling its historical Transaction Statements, which are per-quarter PDF downloads.

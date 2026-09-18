@@ -158,8 +158,8 @@ shares and cost basis. `cashFlows()` returns the ledger plus any in-app txn date
 
 Ledger row fields are short to keep the document small: `d` date, `s` symbol, `n` name,
 `b` 1=buy/0=sell, `q` qty, `v` rupee value, `a` 1 = approximate date (shown as ≈ in the UI),
-and on a sell row optionally `g` (broker-stated realised gain, signed rupees) and `lt`
-(1 = held over a year) - the booked-P&L figure's only source for pre-import sales (v90).
+and on a sell row optionally `gl` / `gs` (broker-stated realised gain, signed rupees, its
+long- and short-term parts) - the booked-P&L figure's only source for pre-import sales (v90/91).
 
 - `pool:'ipo'` is the **Satellite** pool (label lives in the `POOL2` constant): counts in the
   dashboard, excluded from allocation % and the rebalance plan.
@@ -445,7 +445,8 @@ preserved across edits — see the booked-P&L section for `rc`.
 ### Booked P&L for the current FY (Home hero, v87-v90)
 
 Introduced v87; fund pricing corrected twice on the owner's word (v88, then v90); split by
-holding period in v89; pre-app sales join via the ledger in v90.
+holding period in v89; pre-app sales join via the ledger in v90; share sales day-netted like
+the exchange in v91.
 A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** - profit actually taken this
 financial year, shares and funds in one figure, with a "Long term · held > 1 yr" /
 "Short term" breakdown row under the headline figures. Owner asked for it 2026-09-18 and
@@ -467,7 +468,16 @@ named the label and the long-term rule himself; keep the wording unless he chang
   under the Home list (rendered only when non-zero; a permanent caveat becomes wallpaper).
   The tile shows "—", not ₹0, when nothing was sold all year.
 
-  1. **`realisedWin(from,to)` - share sales the app's own lots can price.** Per sale, FIFO:
+  1. **`realisedWin(from,to)` - share sales the app's own lots can price.** Per sale,
+     DAY-NETTED FIFO (v91): a sale consumes shares bought the SAME day first - whatever the
+     intraday sequence, because the exchange nets a day's buys and sells into one obligation -
+     and only then the oldest lots. Plain FIFO booked a real same-day round trip against an
+     old cheap lot as a gain where the broker's statement showed a small intraday loss, and
+     it also drifted the remaining holding's average off the broker's; day-netting fixed
+     both at once. `dayNetOrder()` is the one definition and **`holding()` consumes lots the
+     identical way** - they must stay in step or booked P&L and the live holding disagree
+     about which lots remain. A same-day slice lands in `short` (heldLong is false for it).
+     Otherwise FIFO:
      proceeds less the cost of the exact lots consumed; each lot carries its buy date, so the
      long/short split falls out of the same walk. The lot walk is `holding()`'s line for
      line (`noLot` skipped in both), and it must run over EVERY sale, in or out of the
@@ -516,12 +526,17 @@ named the label and the long-term rule himself; keep the wording unless he chang
        choice. `rc` on payout txs is still WRITTEN (audit trail of what the books did) but
        nothing reads it for gains any more; the record/redeem/correction sheets keep writing
        it and the edit sheets keep it fresh, exactly as v87/v88 built.
-  3. **`ledgerWin(from,to)` - sales that predate the app's records (v90).** The imported
-     ledger's FY sell rows may carry `g` (the broker's own realised gain, signed rupees) and
-     `lt` (1 = broker says held > 1 yr), written once from broker statements. A position
-     imported after its sale has no lots for it, so this is the only honest source. An
-     in-window sell row without `g` counts in `left` and is disclosed. Buys never carry `g`;
-     rows outside the window cost nothing.
+  3. **`ledgerWin(from,to)` - sales that predate the app's records (v90, fields reshaped
+     v91).** The imported ledger's FY sell rows may carry `gl` and/or `gs` - the broker's own
+     realised gain in rupees, split into its long- and short-term parts - written once from
+     the broker statements. Two fields rather than one gain plus a held-long flag, because a
+     single broker fill can be a composite (one real 65-share sale was matched by the broker
+     against six lots, one of them short-term), and splitting the ledger row instead would
+     change what Flows shows. A position imported after its sale has no lots for it, so this
+     is the only honest source. Intraday and buyback gains from the statements belong in
+     `gs`: the tile counts money booked, not tax categories. An in-window sell row carrying
+     neither field counts in `left` and is disclosed. Buys never carry them; rows outside
+     the window cost nothing.
 - **The long/short rule** (`heldLong` via `plusYear`): the sale must fall **strictly after**
   the first anniversary - selling ON the anniversary is short; 29 Feb rolls to 1 Mar. It is
   a holding-period split, not a tax computation (debt/hybrid thresholds differ and the app
@@ -530,20 +545,24 @@ named the label and the long-term rule himself; keep the wording unless he chang
 - `.ltst` is its own two-column block (label above value, 15px) because an inline pair wraps
   at 375px and strands the sign on its own line; `.hk.tight` keeps the tile's long label to
   one line the same way.
-- Verified by extracting the shipped functions and running them in node - **65 assertions**
+- Verified by extracting the shipped functions and running them in node - **74 assertions**
   across six files: shares (FIFO order, FY boundary to the day, lots eaten by out-of-window
   sales, `noLot`, orphan/partly-covered sales, intraday), funds (both-lots pricing, losses,
   emptied-fund-with-history now booking in full, HUF/private exclusion, the units gate),
-  clock/remath, the ledger source, the long/short boundary (anniversary day, leap days,
+  clock/remath, the ledger source, day-netting (incl. the real round-trip shape reproducing
+  the broker's intraday figure AND its remaining average), the long/short boundary (anniversary day, leap days,
   undated lots), and **the real-data fixture suite** (`t_fifo.js`): the owner's actual fund
   histories + official NAV history vs the registrar's actual FY report, plus gate tests on
   mutated copies. Those fixtures live in the session scratchpad only - **they are the
   owner's real data and must never enter this repo.** Also rendered live at phone width:
   tile, split row, privacy shutter, "—" state, disclosure line.
 - **Data patch still owed when this note was written**: the FY sell rows in the ledger have
-  no `g`/`lt` yet. The ICICI-side row's figure comes exactly from its P&L statement; the
-  Groww-side rows take theirs from Groww's P&L report. Until the patch
-  lands, those sales sit in the disclosure count - real money the tile is not yet showing.
+  no `gl`/`gs` yet. The ICICI-side row's figure comes exactly from its P&L statement; most
+  Groww-side rows take theirs from the Groww capital-gains report; four fills matched NO
+  open statement (a second demat exists), so ask the owner which account they came from
+  before pricing them. Until the patch lands those sales sit in the disclosure count - real
+  money the tile is not yet showing. NOTE the Groww account the app's share positions live
+  in is under a family member's name; the statements quoted are from that account.
 
 ## Data durability (do not weaken)
 

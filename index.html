@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v92";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v93";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2173,7 +2173,14 @@ function mfFifo(fid){
     res[id]={long:uL*nav-cL, short:uS*nav-cS};
   }
   const endU=lots.reduce((a,l)=>a+l.q,0);
-  const tol=0.25+(+f.units||0)*2e-4+list.length*0.01;
+  /* Tolerance measured against the owner's real funds on 2026-09-18: two multi-year SIP
+     histories drift ~0.09% of units from the fund's stored figure - the ordinary noise of
+     instalments allotted at a neighbouring day's NAV, compounded over 60-70 entries. The
+     old 0.02%-of-units bound failed them, which would have refused to book a future
+     redemption from either. 0.5% accommodates that while staying an order of magnitude
+     under what a REAL gap looks like: a missing lumpsum showed 5.3%, and a fund whose
+     history is genuinely incomplete showed 15%. Both still fail, by design. */
+  const tol=0.25+(+f.units||0)*5e-3+list.length*0.01;
   const ok=!broken&&Math.abs(endU-(+f.units||0))<=tol;
   return {res,ok};
 }

@@ -619,6 +619,42 @@ TRANSFERRED IN at zero cost, so its "invested" figure under-reads for any positi
 partly moved in from another demat. One holding was flagged as broken on that basis and was
 in fact correct - always reconcile against the ledger's own buy rows before "fixing" data.
 
+### The full verification sweep (2026-09-18) - results
+
+Run after the owner asked for a blanket "everything is correct for ever", which was refused
+(inventory below). Findings, so nobody repeats the work:
+
+- **Every share QUANTITY reconciles, name for name.** The app is the combined view of three
+  demats. ICICI's **Demat Allocation** page (Stocks -> Demat Holdings) is the authoritative
+  register there - its *Portfolio* page is user-maintained and says so in its own footnotes,
+  showing a stale quantity for one holding; never verify against it. Every holding the app
+  showed above its Groww quantity was matched exactly by the ICICI demat: the four gaps came
+  out at exactly the ICICI figure, share for share. The employer bank's shares sit in that
+  demat too and stay out of the app by design (ESOP rule above).
+- **One real error found: an IPO application recorded as a full allotment.** A ledger row
+  carried the applied quantity where only half was allotted, so the app doubled that holding
+  and its cost. This is the mirror of the known "an IPO allotment produces no buy order"
+  trap: an application is not an allotment, and the imported ledger cannot tell them apart.
+  **Check any IPO-dated row against the broker's holdings before trusting its quantity.**
+- **Zero-cost lots are a corporate-action artefact and mostly fine, with one caveat.** Two
+  holdings carry a ₹0 lot paired with each pre-bonus purchase, dated with that purchase -
+  correct in quantity, and correct in cost (a bonus share does have nil cost). But the DATE
+  is the parent's, whereas a bonus share's holding period actually starts at allotment. It
+  has not bitten: both FY sales of the affected name were priced from broker figures, and
+  both brokers called them long term. It WOULD misclassify a bonus share sold within a year
+  of its bonus as long-term. Left as-is deliberately; fix only with the owner's say-so,
+  since redating lots changes stored data.
+- **Funds: 8 of 12 reconcile outright**, and the two that failed did so by ~0.09% of units -
+  ordinary NAV-date noise over 60-70 instalments - which is why the gate was widened (see
+  `mfFifo`). One fund is fully redeemed AND has no scheme code, so it can never price; it is
+  closed, so nothing future depends on it. **The private fund's history is genuinely
+  incomplete (~15% of units unexplained)** - a redemption from it would book nothing and say
+  so. Importing its missing entries is outstanding and is the owner's call.
+- **`mfWarmNavs()` only fetches prices for funds with a payout THIS year.** A fund therefore
+  reads "cannot reconcile" until the moment it actually pays out, at which point it warms
+  and prices correctly. That is by design and self-correcting - do not read a cold fund's
+  state as a data fault, and warm every fund's history before judging one.
+
 ### What has actually been verified against a broker - and what has NOT (2026-09-18)
 
 The owner asked for a blanket "everything is correct, now and for ever". It was refused, with
@@ -635,14 +671,15 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   automatically right for a demerger, where cost must be apportioned between parent and
   child per the scheme - and the app has no record of which is which. A wrong apportionment
   stays invisible until that holding is sold.
-- **Holdings whose shares sit partly in ICICI Direct.** ICICI publishes balances but no
-  cost-basis holdings view, so their ICICI-side purchase prices have never been cross-checked
-  the way the Groww side has.
-- **One holding is off by ~₹67** with quantities matching exactly - too small to chase then,
-  too unexplained to call correct.
-- **A holding that exists only at ICICI** has had no broker cross-check at all.
-- **ESOPs, and the funds with no FY payout** (the reconciliation in `mfFifo` only ran on
-  funds that actually paid out this year).
+- **ICICI-side purchase PRICES.** Quantities are now reconciled exactly (above), but ICICI
+  publishes no trustworthy cost-basis holdings view - its Portfolio page is user-maintained,
+  and its P&L statement covers sales only. Confirming the cost of shares still held there
+  means pulling its historical Transaction Statements, which are per-quarter PDF downloads.
+  Not done; needs the owner's go-ahead for the downloads.
+- **One holding is off by ~₹67** with quantities matching exactly - the likely cause is how
+  its buyback was modelled, but it was not chased down.
+- **ESOPs.** No outside source for these exists in the browser - the figures came from the
+  owner's own sheet - so only internal consistency can ever be checked.
 
 **What can break in future, which no amount of past checking prevents:**
 - **Corporate actions.** The app has no feed for bonuses, splits, demergers or mergers. One

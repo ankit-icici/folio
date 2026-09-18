@@ -451,7 +451,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v87";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v88";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1647,23 +1647,27 @@ const mfPrivate=f=>!!f.priv;
    Cost released comes from the tx's own `rc`, which the payout, redemption and correction
    sheets have written since v87 - that is exact, because it is the amount that actually
    left the fund's cost basis at the time.
-   An entry predating v87 has no `rc`, so it is valued at the fund's CURRENT average cost
-   per unit: the same approximation the v86 rewind states, exact unless a purchase at a
-   different price landed in between. A fund already emptied has no average left to borrow,
-   so rather than book it at zero cost - which would read as pure profit, the very trap the
-   orphan-sell rule exists for - the entry is skipped and counted in `skipped`, and the
-   dashboard says so instead of quietly understating the cost. */
+   An entry predating v87 has no `rc`, so its cost is reconstructed by mfReleasedCosts(),
+   which walks the fund's own books backward to recover the average as it stood ON THE DAY
+   of that payout. What this deliberately does NOT do is price it at the fund's average
+   today: every purchase made after the payout drags that average, so it answers the wrong
+   question. Anything the walk cannot reach honestly is counted in `skipped` and disclosed
+   on screen - never booked at zero cost, which would read as pure profit. */
 function mfRealisedWin(from,to){
   const F=mfunds(); let net=0,n=0,skipped=0;
-  for(const t of Object.values(mfTxs())){
+  const walked={};                       /* one backward walk per fund, reused across its txs */
+  for(const [id,t] of Object.entries(mfTxs())){
     if(t.kind!=="swp"&&t.kind!=="out") continue;
     if(!(t.date>=from&&t.date<=to)) continue;
     const f=F[t.fid]; if(!f||!mfCounted(f)) continue;
     const amt=+t.amt||0; if(!(amt>0)) continue;
     let cost=null;
     if(t.rc!=null&&isFinite(+t.rc)&&+t.rc>=0) cost=+t.rc;
-    else{ const nav=+t.nav||0,u=+f.units||0,inv=+f.inv||0;
-      if(nav>0&&u>0.001&&inv>0) cost=(amt/nav)*(inv/u); }
+    else{
+      if(!walked[t.fid]) walked[t.fid]=mfReleasedCosts(t.fid);
+      const c=walked[t.fid][id];
+      if(c!=null&&isFinite(c)&&c>=0) cost=c;
+    }
     if(cost===null){ skipped++; continue; }
     net+=amt-cost; n++;
   }
@@ -2020,6 +2024,94 @@ async function mfNavOn(code,day){
     }
   }catch(e){}
   return null;
+}
+/* Same lookup, straight off the session cache and synchronous - for the booked-P&L walk,
+   which has to run inside a render. Returns null when the history has not come down yet;
+   mfWarmNavs() fetches it and re-renders. */
+function mfNavCached(code,day){
+  const h=mfNavHist[code]; if(!h||!day) return null;
+  for(const r of h){
+    const d=r.date.slice(6,10)+"-"+r.date.slice(3,5)+"-"+r.date.slice(0,2);
+    if(d<=day){ const n=parseFloat(r.nav); return n>0?n:null; }
+  }
+  return null;
+}
+/* How many units a tx moved: 0 = deliberately none, null = it moved some but we cannot say
+   how many. The distinction matters because `out` means two different things in this data:
+   mfRedeemSheet writes one that MOVES units (and has carried a nav since v85), while the
+   Lumpsum diary writes one that explicitly does not. `in` never moves units - nothing in the
+   app writes one that does. A withdrawal with no nav is therefore read as a diary entry;
+   that is the right call for everything the app has written since v85, and mfReleasedCosts
+   sanity-checks the outcome so a bad guess cannot silently produce a number. */
+function mfTxUnits(t,f){
+  const k=t.kind;
+  if(k==="in") return 0;
+  if(k==="out"&&!(+t.nav>0)) return 0;
+  const nav=+t.nav>0?+t.nav:(f.code?mfNavCached(f.code,t.date):null);
+  return nav>0?(+t.amt||0)/nav:null;
+}
+/* The cost each payout ACTUALLY released, priced at the fund's average ON THAT DAY.
+   Walks BACKWARD from the fund's current units and cost - which are the authoritative
+   figures - undoing each tx in turn, so it needs no knowledge of what the fund held before
+   its records begin. Undoing a payout is exact: a redemption never changes the average, so
+   cost before = cost after x units before / units after. That is the same identity
+   mfTxRemath() rewinds with, and it is why this reconciles with the fund's own books
+   rather than estimating.
+   It replaced reading the fund's average as it stands TODAY, which is wrong whenever a
+   purchase landed after the payout - the owner called that out on 2026-09-18, correctly.
+   Stops the moment it cannot be sure: a tx whose units are unknowable, or a payout that
+   emptied the fund (from 0 units / 0 cost there is no average left to walk back through).
+   Everything older than that stop is left out and disclosed rather than guessed at, and
+   `ok:false` on a walk that drives units negative throws the whole fund out - that can only
+   mean a tx was misread, and a misread walk must not produce a figure. */
+function mfReleasedCosts(fid){
+  const f=mfunds()[fid]; if(!f) return {};
+  const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===fid&&t.date)
+    .sort((a,b)=>a[1].date<b[1].date?-1:a[1].date>b[1].date?1:0);
+  /* Units are re-rounded to 4dp on every write and cost to whole rupees, so a long history
+     drifts a little as it is walked back. The slack absorbs that while staying orders of
+     magnitude below anything a misread tx could produce - a diary entry mistaken for a real
+     redemption moves hundreds of units, not hundredths. Too tight a bound here is not a safe
+     default: it threw away answers that were right to the paisa. */
+  const slack=0.01+list.length*0.001;
+  let U=+f.units||0, I=+f.inv||0;
+  const costs={};
+  for(let k=list.length-1;k>=0;k--){
+    const [id,t]=list[k], u=mfTxUnits(t,f);
+    if(u===null) break;
+    if(u===0) continue;
+    if(t.kind==="sip"||t.kind==="in"){
+      U-=u; I-=(+t.amt||0);
+      if(U<-slack) break;        /* the records stopped fitting the books - go no further */
+      if(U<0) U=0; if(I<0) I=0;
+    }else{
+      if(!(U>1e-9)) break;                       /* this payout closed the fund out */
+      const Ub=U+u, Ib=I*Ub/U;
+      costs[id]=Ib-I; U=Ub; I=Ib;
+    }
+  }
+  /* Whatever was reached is sound on its own: each figure is derived from the fund's
+     authoritative state working backward, so trouble further back cannot corrupt what was
+     already computed. Anything not reached is simply absent, and gets disclosed. */
+  return costs;
+}
+/* A payout that still needs its fund's NAV history to be priced: fetch the history once,
+   then re-render so the booked figure fills itself in. Read-only, like mfFillTxNavs. */
+let mfNavWarming=false;
+async function mfWarmNavs(){
+  if(mfNavWarming) return;
+  const F=mfunds(), need=new Set();
+  for(const t of Object.values(mfTxs())){
+    const f=F[t.fid];
+    if(!f||!f.code||!mfCounted(f)) continue;
+    if(+t.nav>0||t.kind==="in"||t.kind==="out") continue;   /* priced already, or moves no units */
+    if(!mfNavHist[f.code]) need.add(f.code);
+  }
+  if(!need.size) return;
+  mfNavWarming=true;
+  try{ for(const code of need) await mfNavOn(code,today()); }
+  finally{ mfNavWarming=false; }
+  safeRender();
 }
 /* Fills the NAV line on ledger rows whose tx predates v85 (no nav stored) from the per-fund
    history cache. Purely cosmetic and read-only - it never writes to the document. Rows are
@@ -2831,6 +2923,7 @@ function bind(){
     b.addEventListener("click",()=>{const m=b.dataset.month;openMonth=openMonth===m?null:m;render();}));
   bindPlan();
   mfFillTxNavs();
+  mfWarmNavs();      /* prices any older payout the booked-P&L figure still needs */
   bindEsop();
 }
 function bindPlan(){

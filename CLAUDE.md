@@ -442,6 +442,7 @@ preserved across edits — see the booked-P&L section for `rc`.
 
 ### Booked P&L for the current FY (Home hero, v87)
 
+Introduced v87; the fund half was corrected in v88 (see below).
 A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** — profit actually taken this
 financial year, shares and funds in one figure. Owner asked for it 2026-09-18 and named the
 label himself; keep the wording unless he changes it.
@@ -487,10 +488,45 @@ label himself; keep the wording unless he changes it.
   - `mfTxSheet` **scales** `rc` by the amount ratio: that sheet can change the amount and
     never touches the NAV, so the units sold move with the amount and the cost moves in step.
     It drops `rc` entirely if the entry stops being a withdrawal or is moved to another fund.
-  - A pre-v87 entry has no `rc` and is valued at the fund's **current** average cost per unit —
-    the same approximation the v86 rewind states, exact unless a purchase at a different price
-    landed in between. **A fund already emptied has no average left to borrow**, so its entry
-    is skipped and counted rather than booked at zero cost, which would read as pure profit.
+  - **A pre-v87 entry has no `rc`, so `mfReleasedCosts(fid)` rebuilds it (v88).** v87 shipped
+    valuing those at the fund's average **today**; the owner rejected that outright the same
+    day — *"no it should completely match. it should consider the original cost price"* — and
+    he was right: every purchase made after a payout drags the average, so today's average
+    answers the wrong question. Measured on the test scenarios, it was out by up to
+    **₹23,529 on a ₹25,000 cost**, and it always overstated profit after a purchase at a
+    higher price. Do not reintroduce it as a fallback.
+  - The rebuild walks the fund's books **backward** from its current `units`/`inv` — the
+    authoritative pair — undoing each tx. Undoing a payout is an identity, not an estimate:
+    a redemption never moves the average, so `cost before = cost after × units before /
+    units after`. That is what `mfTxRemath()` already rewinds with. Walking backward is the
+    whole trick: it needs no knowledge of what the fund held before its records begin, so an
+    imported holding with years of untracked history still prices correctly.
+  - **Accuracy: worst case ₹1.84 across the scenario suite, typically under ₹0.50**, versus
+    ₹23,529 for what it replaced. The residual is not a modelling error — `units` is re-rounded
+    to 4dp and `inv` to whole rupees on *every* write, so walking back through a payout that
+    took a large fraction of the fund amplifies that rounding. The information is genuinely
+    gone from the books; nothing can recover it. Entries written from v87 carry `rc` and have
+    **no** error at all, so this ceiling only ever applies to the pre-v87 backlog.
+  - **`out` means two different things in this data, and the walk has to guess.** `mfRedeemSheet`
+    writes an `out` that MOVES units (and has carried a `nav` since v85); the Lumpsum diary
+    writes an `out` that explicitly does not. `mfTxUnits()` therefore reads a withdrawal with
+    no `nav` as a diary entry, and `in` as never moving units (nothing in the app writes one
+    that does). That is right for everything the app has written since v85; the exposure is an
+    app redemption from 5–16 Sep 2026, or an import that used `in` for real purchases.
+    The walk cannot detect that locally, so it **stops** rather than pressing on whenever units
+    go materially negative, and everything it did not reach is disclosed instead of guessed.
+  - It also stops at **a payout that emptied the fund** — from 0 units and 0 cost there is no
+    average to walk back through. Such an entry is skipped and counted, never booked at zero
+    cost, which would read as pure profit.
+  - Whatever the walk *did* reach is sound on its own, because each figure derives from the
+    fund's authoritative current state working backward; trouble further back cannot corrupt
+    what was already computed. So a stop keeps its results rather than discarding them — an
+    earlier guard that threw the whole fund away was deleted for binning answers that were
+    right to the paisa. **Its tolerance must stay above the app's own rounding** (`slack` grows
+    with the tx count); too tight a bound there is not a safe default, it is a silent data loss.
+  - `mfNavCached()` is the synchronous cache-only NAV lookup the walk needs inside a render;
+    `mfWarmNavs()` (called from `bind()`, beside `mfFillTxNavs()`) fetches any missing history
+    once and re-renders. Both are read-only and never write to the document.
 - Anything skipped or uncovered surfaces as one plain line under the Home list, and **only**
   when the count is non-zero — a permanent caveat under a figure becomes wallpaper.
   The tile shows **"—"**, not ₹0, when nothing was sold all year: "nothing to report" and
@@ -500,13 +536,22 @@ label himself; keep the wording unless he changes it.
   deliberately **not** `nowrap`, so a narrower phone wraps untidily rather than clipping the
   year off the end. Measured after the change: all four labels one line, the two values in
   row 2 within 1px of each other.
-- Verified by extracting the shipped functions and running them in node (38 assertions:
+- Verified by extracting the shipped functions and running them in node (**47 assertions**:
   12 share cases incl. FIFO order, the previous-FY boundary at 31 Mar/1 Apr, lots eaten by an
   earlier out-of-window sale, `noLot`, orphan and partly-covered sales, intraday round trip;
-  12 fund cases incl. stored-vs-average cost, the emptied-fund skip, HUF/private exclusion;
-  14 clock and remath cases), plus a live render at phone width driven with synthetic data in
-  the real document shape — privacy shutter, the "—" state and the uncounted-sale line all
-  confirmed on screen. **Not yet confirmed against the owner's real data** (see below).
+  12 fund cases incl. stored-vs-rebuilt cost, the emptied-fund skip, HUF/private exclusion;
+  14 clock and remath cases; **9 cost-rebuild cases**), plus a live render at phone width
+  driven with synthetic data in the real document shape — privacy shutter, the "—" state and
+  the uncounted-sale line all confirmed on screen.
+  - The cost-rebuild suite is the one worth keeping in step. It **forward-simulates exactly
+    what the sheets write** (rounding units to 4dp and cost to the rupee on every write, as
+    the app does), records what each payout really released, then checks the backward walk
+    recovers it: purchases after a payout at much higher and much lower prices, SIP and SWP
+    running together, back-to-back payouts, a Redeem mixed with SWPs, a payout at a loss, an
+    imported opening holding, the owner's own SWP-into-another-fund rhythm, and a 40-entry
+    history. It prints the worst error for the new and old methods side by side — rerun it
+    after touching any of this, and expect the new number to stay near ₹1.
+- **Not yet confirmed against the owner's real data** (see below).
 
 ## Data durability (do not weaken)
 

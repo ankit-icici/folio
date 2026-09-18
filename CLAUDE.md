@@ -608,7 +608,7 @@ and `stockId` ride through untouched, and that is the entire point:
 
 **Same-day pairs and imports.** Groww (and the exchange) net a same-day buy and sell against
 each other; a plain-FIFO importer instead eats the oldest lot and keeps the same-day buy.
-That is what happened to a real holding here, leaving its cost basis ~₹3.3k light and its
+That is what happened to a real holding here, leaving its cost basis a few thousand light and its
 average well below the broker's. v91 taught `holding()`/`realisedWin()` to day-net going
 forward, but **already-imported lots keep whatever shape the old import gave them** - they
 are stored rows, not a replay. If a holding's average disagrees with the broker's, look for
@@ -627,13 +627,14 @@ stock) **disagree**, and only the statement is trustworthy. Comparing against th
 caused three separate wrong conclusions in one session:
 
 - It reports a **different average** for a holding whose cost was apportioned in a demerger
-  (screen ₹719.81 vs statement ₹794.86 on the same 174 shares) - which made a genuinely
-  broken holding look like it matched, and the error was ₹13,000.
+  (the screen and the statement quoted materially different averages for the SAME share
+  count) - which made a genuinely broken holding look like it matched, and the error was
+  five figures.
 - It reports a **different quantity and average** for a holding with transferred-in shares
-  (screen 235 @₹333.23 vs statement 216 @₹362.54 - same total), which produced a false alarm
-  that a correct holding was wrong.
-- It was simply **stale** on a third holding, producing a phantom ₹67 discrepancy that the
-  statement shows does not exist.
+  (different quantity AND average, same total value), which produced a false alarm that a
+  correct holding was wrong.
+- It was simply **stale** on a third holding, producing a small phantom discrepancy that
+  the statement shows does not exist.
 
 The statement reconciled **every** holding to within a few rupees except the one real error
 below. Use it, and use the ICICI **Demat Allocation** page for that side. Both screens - the
@@ -642,42 +643,42 @@ Groww holdings screen and ICICI's Portfolio page - are unreliable in the same wa
 ### CLOSED: the Edelweiss -> Nuvama demerger apportionment (fixed 2026-09-18)
 
 The app had given the Nuvama entitlement a cost without taking it off Edelweiss, so
-Edelweiss was overstated ~₹13,066 and Nuvama understated ~₹13,055 while the COMBINED total
-across the two was right to ₹11 - which is exactly why every portfolio-level check passed
+the parent was overstated and the child understated by the same five-figure amount, while
+the COMBINED total across the two was right to a few rupees - which is exactly why every
+portfolio-level check passed
 for weeks. The tell: the app's entire Nuvama cost was *less* than the statement's cost for
 just its Groww-held subset, implying a negative cost on the remainder.
 
 Fixed the way a demerger actually works - a uniform PERCENTAGE off each affected share's
 cost, not a flat rupee amount:
 - The retained fraction was **derived from the broker's own statement** rather than guessed:
-  Edelweiss keeps **0.68556**, Nuvama takes **0.31444**. Solved from
-  `f = (statement Edelweiss total − post-demerger lot cost) / pre-demerger Groww lot cost`.
+  solved from `f = (statement parent total − post-demerger lot cost) / pre-demerger lot
+  cost`, which yields the scheme's own retained fraction without needing the announcement.
 - Only lots dated before the demerger (2023-12-03, the date the Nuvama entitlement lots
   carry) were scaled; every later purchase was untouched, which is correct and also keeps
   FIFO order and per-lot proportions faithful, so a PARTIAL future sale prices correctly too.
-- The Nuvama entitlement lots went from ₹350.83 to ₹572.92 per share.
-- Cost-neutral by construction: combined total moved ₹305,267 -> ₹305,256, which is the
-  broker's own combined figure (both statement totals plus the ICICI-side purchase).
+- The entitlement lots were repriced to the level that fraction implies.
+- Cost-neutral by construction: the combined total landed on the broker's own combined
+  figure (both statement totals plus the ICICI-side purchase).
 Result: **all fifteen holdings now tie to the holdings statement**, each within a few rupees
 of (statement + ICICI-side cost), with the two known-and-explained exceptions carried in the
 expectation itself - the transferred-in shares the statement carries at nil, and the ICICI
 shares no statement covers.
 
-### CLOSED: HDFC Bank's cost was ₹3,103 high (fixed 2026-09-18)
+### CLOSED: a four-figure cost error on the last unverified holding (fixed 2026-09-18)
 
 The last holding without a broker document behind it. Settled by reconstruction from four
 sources that agree: the other Groww account's full order history (16 buys, 1 sell) plus its
-holdings statement prove its 130 shares cost ₹96,959 to within 75 paise; that broker's
+holdings statement agree on what its shares cost, to within a rupee; that broker's
 capital-gain report names the 14-07-2021 lot as the one 5 shares were sold from; ICICI's P&L
 names its own 2017 lot and its 5-share sale; and ICICI's Portfolio page - useless for
-quantity - turns out to state that 2017 holding's cost exactly right at ₹13,227.90.
+quantity - turns out to state that old holding's COST exactly right.
 The app had kept the full 13-share Groww lot after 5 of it were sold, and carried 5 too few
 of the cheaper 2017 shares. Quantity was right (175) all along, which is why nothing caught
-it; the misallocation alone cost ₹3,103. Fixed by moving 5 shares between the two lots -
-no price or date touched.
-**Every holding now ties to a broker figure, worst gap ₹20.**
+it; the misallocation alone was worth four figures. Fixed by moving the affected shares
+between the two lots - no price or date touched.
+**Every holding now ties to a broker figure, worst gap about twenty rupees.**
 
-### The full verification sweep (2026-09-18) - results
 ### The full verification sweep (2026-09-18) - results
 
 Run after the owner asked for a blanket "everything is correct for ever", which was refused
@@ -740,15 +741,15 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   ICICI quantity was one Groww purchase), and the Nuvama holding is its demerger entitlement
   at the exact scheme ratio, so it needs no purchase of its own.
 - **360 One: SETTLED, and the app is right to 6 paise.** Groww's own FY 2024-25 capital-gain
-  report states the buy price for the shares sold that July as **₹550.47** - the original
-  ₹1,100.96 halved once by a bonus - against the app's ₹550.48. Feeding that back: every
-  recorded purchase totals ₹99,719.74, the 40 shares sold released 40 x ₹550.47 = ₹22,018.80,
-  leaving **₹77,700.94** against the app's stored ₹77,701. Nothing is missing.
+  report states the buy price for the shares sold that July as exactly half what was
+  originally paid - one bonus halving - matching the app's lot price to the paisa. Feeding
+  that back: total recorded purchases, less the cost released on the shares sold at that
+  stated price, lands on the app's stored figure to within a few paise. Nothing is missing.
   Two wrong turns on the way, both worth remembering: only **22** shares were ever bought -
   the identical 22-share order the previous evening was **REJECTED for insufficient balance**
   ("Qty 0/22" on its detail page), and *a Groww order list renders a rejected order exactly
   like a filled one, so open the detail before counting it*. And Claude told the owner
-  ~₹11,000 was missing, having assumed an averaging convention without checking; the broker's
+  a five-figure sum was missing, having assumed an averaging convention without checking; the broker's
   own figure disproved it. **Get the broker's stated buy price before calling a cost basis
   wrong** - the report is at Profile -> Reports -> Stocks - Capital gains, which takes a
   financial-year dropdown and downloads an xlsx carrying per-lot buy date, buy price and P&L.
@@ -756,10 +757,10 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   and now reconciles.** Its stored units and cost had drifted (one instalment behind, and its
   tx list was missing the very first purchase), and the replay was ~15% short. Rebuilt to the
   broker's **74** transactions - each with its real date, amount and allotment NAV - and its
-  units/cost reset to Groww's official holdings statement (663.955 units, ₹60,240.17). The
+  units/cost reset to Groww's official holdings statement. The
   replay now lands within 1.2 units (0.17%), the fund reconciles, and **the app's computed
-  lifetime return for it came out at 15.48% against the broker statement's own XIRR of
-  15.46%** - an independent check that the rebuilt history is right, not merely self-consistent.
+  lifetime return for it landed within 0.02 percentage points of the broker statement's own
+  XIRR** - an independent check that the rebuilt history is right, not merely self-consistent.
   How to get this data again (it is the only way to see a full MF history - the orders page
   silently returns just the newest ~20 rows, and a fund's SIP page shows only ONE
   registration, which here began a year after the real first purchase and misled the first
@@ -772,66 +773,6 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   reads "cannot reconcile" until the moment it actually pays out, at which point it warms
   and prices correctly. That is by design and self-correcting - do not read a cold fund's
   state as a data fault, and warm every fund's history before judging one.
-
-### What has actually been verified against a broker - and what has NOT (2026-09-18)
-
-The owner asked for a blanket "everything is correct, now and for ever". It was refused, with
-this inventory. **Do not upgrade any line here to "verified" without doing the work.**
-
-**Verified against an outside source:** every FY 26-27 sale (29 of them - funds to the
-registrar's report to the paisa, shares to the two brokers' statements); both purchases
-behind the four elimination-priced sales; all 12 purchases in the owner's own Groww account;
-and 9 holdings whose quantity AND average match the broker's screen to the rupee.
-
-**NOT verified, and each could put a future sale's profit out:**
-- **Zero-cost lots from corporate actions.** Several holdings carry lots recorded at ₹0
-  (bonus entitlements, and demerger children). Zero IS right for a bonus issue. It is NOT
-  automatically right for a demerger, where cost must be apportioned between parent and
-  child per the scheme - and the app has no record of which is which. A wrong apportionment
-  stays invisible until that holding is sold.
-- **The ICICI-held shares were BOUGHT IN GROWW and transferred** - the owner said so when
-  Claude proposed downloading ICICI statements, and he is right: ICICI statements are not
-  the source for them, the Groww order history is. Edelweiss reconciles exactly (the whole
-  ICICI quantity was one Groww purchase), and the Nuvama holding is its demerger entitlement
-  at the exact scheme ratio, so it needs no purchase of its own.
-- **360 One: SETTLED, and the app is right to 6 paise.** Groww's own FY 2024-25 capital-gain
-  report states the buy price for the shares sold that July as **₹550.47** - the original
-  ₹1,100.96 halved once by a bonus - against the app's ₹550.48. Feeding that back: every
-  recorded purchase totals ₹99,719.74, the 40 shares sold released 40 x ₹550.47 = ₹22,018.80,
-  leaving **₹77,700.94** against the app's stored ₹77,701. Nothing is missing.
-  Two wrong turns on the way, both worth remembering: only **22** shares were ever bought -
-  the identical 22-share order the previous evening was **REJECTED for insufficient balance**
-  ("Qty 0/22" on its detail page), and *a Groww order list renders a rejected order exactly
-  like a filled one, so open the detail before counting it*. And Claude told the owner
-  ~₹11,000 was missing, having assumed an averaging convention without checking; the broker's
-  own figure disproved it. **Get the broker's stated buy price before calling a cost basis
-  wrong** - the report is at Profile -> Reports -> Stocks - Capital gains, which takes a
-  financial-year dropdown and downloads an xlsx carrying per-lot buy date, buy price and P&L.
-- **Parag Parikh (the private fund) is SOUND where it counts.** Groww's own invested figure
-  matches the app's stored cost to the rupee, and its units match too - so its card and its
-  place outside every total are right. Only its historical tx list is partial (~15% of units
-  unexplained), which affects just its own lifetime-return line and a future redemption from
-  it, which the gate would refuse and disclose. The likely cause is the documented Groww
-  lazy-load trap at import time: its order page hands back only the newest ~20 rows.
-- **ICICI-side purchase PRICES (superseded by the two entries above, kept for context).** Quantities are now reconciled exactly (above), but ICICI
-  publishes no trustworthy cost-basis holdings view - its Portfolio page is user-maintained,
-  and its P&L statement covers sales only. Confirming the cost of shares still held there
-  means pulling its historical Transaction Statements, which are per-quarter PDF downloads.
-  Not done; needs the owner's go-ahead for the downloads.
-- **One holding is off by ~₹67** with quantities matching exactly - the likely cause is how
-  its buyback was modelled, but it was not chased down.
-- **ESOPs.** No outside source for these exists in the browser - the figures came from the
-  owner's own sheet - so only internal consistency can ever be checked.
-
-**What can break in future, which no amount of past checking prevents:**
-- **Corporate actions.** The app has no feed for bonuses, splits, demergers or mergers. One
-  happens, and quantity and average silently drift from the broker until somebody notices.
-  This is the single biggest standing risk to "it stays correct".
-- **An IPO allotment produces no buy order anywhere**, so it must be entered by hand or the
-  eventual sale has no cost behind it.
-- **A trade made and not recorded** is invisible by definition.
-The app's own protection - disclosing what it cannot price - covers a MISSING cost. It cannot
-detect a WRONG one, nor a corporate action nobody told it about. Say so plainly when asked.
 
 ### Corporate actions: what to do when one happens
 

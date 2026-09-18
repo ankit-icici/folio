@@ -774,6 +774,39 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
 The app's own protection - disclosing what it cannot price - covers a MISSING cost. It cannot
 detect a WRONG one, nor a corporate action nobody told it about. Say so plainly when asked.
 
+### Corporate actions: what to do when one happens
+
+There is no feed for these and there never has been; the owner will report them as they hit
+his demat (agreed 2026-09-18). The three are NOT the same job, and the demat only ever shows
+the new QUANTITY - never what it did to cost - so "enter what the demat shows" is right for
+one of them and wrong for the other two.
+
+- **Bonus** - add the new shares as a ₹0 buy, dated the day they appeared. Quantity rises,
+  total cost is unchanged (nothing was paid), average falls. Correct, and dating them at the
+  bonus date is also *better* than the old import's habit of dating a bonus lot with its
+  parent purchase (see the zero-cost-lot caveat above).
+- **Split** - do NOT add rows. **Edit** the existing lots (`stockTxSheet`, v92): multiply each
+  quantity, divide each price, keep every original date. A split creates no new shares in the
+  tax sense - they inherit the original acquisition date - so adding dated ₹0 rows would
+  misclassify them short-term.
+- **Demerger** - the hardest. The new company's shares arrive free in the demat, but the cost
+  must be **apportioned** between parent and child at the ratio the scheme specifies. Adding
+  the child at ₹0 and leaving the parent alone keeps the TOTAL right while making both sides
+  individually wrong, and that only surfaces years later when one is sold. Nuvama in this
+  portfolio came from Edelweiss exactly this way.
+
+**The self-check to give the owner, which needs no understanding of the above:** after
+entering anything, the holding's **quantity AND average price** should both match his
+broker's holdings screen. Quantity alone is not enough - it is the average that reveals a
+botched cost treatment.
+
+**Known divergence, worth stating before it surprises anyone:** Groww prices a bonus by
+*halving the original lot* (its capital-gain report showed a 2021 purchase at exactly half
+its paid price), whereas the app's imported lots use full-price originals plus ₹0 bonus
+lots. Both give the same TOTAL cost - that is why 360 One reconciled to 6 paise - but FIFO
+over them can report a different profit on a PARTIAL sale than the broker's statement does.
+Total correct, per-sale possibly not. Raise it with the owner before "fixing" either side.
+
 ## Data durability (do not weaken)
 
 **Relay v15 write guard covers the WHOLE document**, not just stocks/txns: `shrunk_(old,inc)`

@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v89";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v90";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1669,38 +1669,28 @@ const mfPrivate=f=>!!f.priv;
 /* Profit BOOKED when fund units were sold inside [from,to] - SWP payouts and redemptions.
    HUF and private money stays out, exactly as it does in every other aggregate, so this
    figure ties to the same set of funds the rest of the dashboard is built from.
-   Cost released comes from the tx's own `rc`, which the payout, redemption and correction
-   sheets have written since v87 - that is exact, because it is the amount that actually
-   left the fund's cost basis at the time.
-   An entry predating v87 has no `rc`, so its cost is reconstructed by mfReleasedCosts(),
-   which walks the fund's own books backward to recover the average as it stood ON THE DAY
-   of that payout. What this deliberately does NOT do is price it at the fund's average
-   today: every purchase made after the payout drags that average, so it answers the wrong
-   question. Anything the walk cannot reach honestly is counted in `skipped` and disclosed
-   on screen - never booked at zero cost, which would read as pure profit. */
+   Since v90 the gain comes from mfFifo(): every redeemed unit is priced at what THAT unit
+   cost when it was bought, oldest units first - the registrar's method, and the taxman's.
+   The owner reconciles this figure against his portal's capital gain report, and v88's
+   average-cost pricing disagreed with it by thousands per payout, so do not bring any
+   average-cost fallback back here. The long/short split now falls out of the same lot walk
+   (each lot knows its purchase date), so nothing is apportioned any more.
+   A payout mfFifo() cannot price honestly - fund fails its own reconciliation, a price is
+   missing, or the lots cannot cover it - lands in `skipped` and is disclosed on screen,
+   never guessed. `unk` stays in the shape for the stock side; a priced fund lot always
+   knows its date, so funds contribute nothing to it now. */
 function mfRealisedWin(from,to){
   const F=mfunds(); let net=0,n=0,skipped=0,long=0,short=0,unk=0;
-  const walked={},split={};              /* one walk of each kind per fund, reused across txs */
+  const fifo={};                          /* one lot replay per fund, reused across its txs */
   for(const [id,t] of Object.entries(mfTxs())){
     if(t.kind!=="swp"&&t.kind!=="out") continue;
     if(!(t.date>=from&&t.date<=to)) continue;
     const f=F[t.fid]; if(!f||!mfCounted(f)) continue;
-    const amt=+t.amt||0; if(!(amt>0)) continue;
-    let cost=null;
-    if(t.rc!=null&&isFinite(+t.rc)&&+t.rc>=0) cost=+t.rc;
-    else{
-      if(!walked[t.fid]) walked[t.fid]=mfReleasedCosts(t.fid);
-      const c=walked[t.fid][id];
-      if(c!=null&&isFinite(c)&&c>=0) cost=c;
-    }
-    if(cost===null){ skipped++; continue; }
-    const gain=amt-cost; net+=gain; n++;
-    /* apportioning the GAIN by unit share is the same as splitting proceeds and cost
-       separately, because under average cost every unit carries the identical cost */
-    if(!(t.fid in split)) split[t.fid]=mfUnitSplits(t.fid);
-    const s=split[t.fid]&&split[t.fid][id], tot=s?s.long+s.short+s.unk:0;
-    if(s&&tot>1e-9){ long+=gain*(s.long/tot); short+=gain*(s.short/tot); unk+=gain*(s.unk/tot); }
-    else unk+=gain;                      /* countable, but its age is not knowable */
+    if(!(+t.amt>0)) continue;
+    if(!(t.fid in fifo)) fifo[t.fid]=mfFifo(t.fid);
+    const w=fifo[t.fid], g=w&&w.ok?w.res[id]:null;
+    if(!g){ skipped++; continue; }
+    net+=g.long+g.short; long+=g.long; short+=g.short; n++;
   }
   return {net,n,skipped,long,short,unk};
 }
@@ -1783,20 +1773,40 @@ function combinedCagr(){
   for(let i=0;i<120;i++){ const m=(lo+hi)/2; if(npv(m)>0) lo=m; else hi=m; }
   return lo*100;
 }
+/* Booked profit on sales that predate the app's own records - the imported ledger rows.
+   A position imported after its sale carries no lots for that sale, so realisedWin() can
+   never price it; the truth lives only in the broker's own statement. A ledger SELL row may
+   therefore carry `g` (the broker-stated realised gain, rupees, signed) and `lt` (1 = the
+   broker says the shares were held over a year), written once from the broker statements -
+   ICICI's P&L statement and Groww's P&L report - on 2026-09-18. The row's q/v stay what the
+   ledger said; g/lt add what only the broker knew. A sell row inside the window WITHOUT a
+   `g` is counted in `unpriced` and disclosed - it is real money the figure is not showing.
+   Buys never carry g. Rows outside the window are ignored, so old FYs cost nothing. */
+function ledgerWin(from,to){
+  const led=(meta.history&&meta.history.ledger)||[];
+  let net=0,n=0,long=0,short=0,unpriced=0;
+  for(const l of led){
+    if(l.b||!l.d||l.d<from||l.d>to) continue;
+    if(l.g==null||!isFinite(+l.g)){ unpriced++; continue; }
+    const g=+l.g; net+=g; n++;
+    if(l.lt) long+=g; else short+=g;
+  }
+  return {net,n,long,short,unpriced};
+}
 /* "P&L booked (Current FY)" - profit actually taken this financial year, shares and funds
-   in one figure, rolling over by itself on 1 April.
-   It is deliberately NOT the change in what the portfolio is worth over the year. That was
-   asked for first and cannot be answered: the app has only existed since Sep 2026, so there
-   is no record anywhere of what any holding was worth on 1 Apr 2026 to measure against.
-   Producing it would mean teaching the relay to fetch historical closes (Yahoo serves them
-   with period1/period2, and mfapi already serves NAV history) - viable, and the owner's call
-   to make, not a gap to paper over with a guess. Booked money is the part the trade records
-   can prove on their own, and that is what this shows. */
+   in one figure, rolling over by itself on 1 April. Three sources, each covering what only
+   it can know: realisedWin (share sales the app's own lots can price), mfRealisedWin (fund
+   redemptions priced the registrar's way), ledgerWin (pre-app sales carrying the broker's
+   own figure). `left` is every sale the figure is NOT showing, from any of the three, and
+   drives the disclosure line under the Home list.
+   It is deliberately NOT the change in what the portfolio is worth over the year - the app
+   has no record of 1 Apr 2026 to measure that against (first commit 2026-09-05); the owner
+   chose booked-only, and the full version stays an open offer in the backlog. */
 function bookedFY(){
   const [a,b]=fyWindow(0);
-  const s=realisedWin(a,b), m=mfRealisedWin(a,b);
-  return {net:s.net+m.net, n:s.n+m.n, left:s.naked+m.skipped,
-          long:s.long+m.long, short:s.short+m.short, unk:s.unk+m.unk};
+  const s=realisedWin(a,b), m=mfRealisedWin(a,b), l=ledgerWin(a,b);
+  return {net:s.net+m.net+l.net, n:s.n+m.n+l.n, left:s.naked+m.skipped+l.unpriced,
+          long:s.long+m.long+l.long, short:s.short+m.short+l.short, unk:s.unk+m.unk};
 }
 function homeHeroHTML(t){
   const m=mfTotals(), bk=bookedFY();
@@ -2072,124 +2082,91 @@ async function mfNavOn(code,day){
 /* Same lookup, straight off the session cache and synchronous - for the booked-P&L walk,
    which has to run inside a render. Returns null when the history has not come down yet;
    mfWarmNavs() fetches it and re-renders. */
+const mfNavMemo={};
 function mfNavCached(code,day){
   const h=mfNavHist[code]; if(!h||!day) return null;
+  const k=code+":"+day;
+  if(k in mfNavMemo) return mfNavMemo[k];
+  let v=null;
   for(const r of h){
     const d=r.date.slice(6,10)+"-"+r.date.slice(3,5)+"-"+r.date.slice(0,2);
-    if(d<=day){ const n=parseFloat(r.nav); return n>0?n:null; }
+    if(d<=day){ const n=parseFloat(r.nav); v=n>0?n:null; break; }
   }
-  return null;
+  return mfNavMemo[k]=v;   /* history is fetched once per session, so a day's answer is final */
 }
-/* How many units a tx moved: 0 = deliberately none, null = it moved some but we cannot say
-   how many. The distinction matters because `out` means two different things in this data:
-   mfRedeemSheet writes one that MOVES units (and has carried a nav since v85), while the
-   Lumpsum diary writes one that explicitly does not. `in` never moves units - nothing in the
-   app writes one that does. A withdrawal with no nav is therefore read as a diary entry;
-   that is the right call for everything the app has written since v85, and mfReleasedCosts
-   sanity-checks the outcome so a bad guess cannot silently produce a number. */
-function mfTxUnits(t,f){
-  const k=t.kind;
-  if(k==="in") return 0;
-  if(k==="out"&&!(+t.nav>0)) return 0;
-  const nav=+t.nav>0?+t.nav:(f.code?mfNavCached(f.code,t.date):null);
-  return nav>0?(+t.amt||0)/nav:null;
-}
-/* The cost each payout ACTUALLY released, priced at the fund's average ON THAT DAY.
-   Walks BACKWARD from the fund's current units and cost - which are the authoritative
-   figures - undoing each tx in turn, so it needs no knowledge of what the fund held before
-   its records begin. Undoing a payout is exact: a redemption never changes the average, so
-   cost before = cost after x units before / units after. That is the same identity
-   mfTxRemath() rewinds with, and it is why this reconciles with the fund's own books
-   rather than estimating.
-   It replaced reading the fund's average as it stands TODAY, which is wrong whenever a
-   purchase landed after the payout - the owner called that out on 2026-09-18, correctly.
-   Stops the moment it cannot be sure: a tx whose units are unknowable, or a payout that
-   emptied the fund (from 0 units / 0 cost there is no average left to walk back through).
-   Everything older than that stop is left out and disclosed rather than guessed at, and
-   `ok:false` on a walk that drives units negative throws the whole fund out - that can only
-   mean a tx was misread, and a misread walk must not produce a figure. */
-function mfReleasedCosts(fid){
-  const f=mfunds()[fid]; if(!f) return {};
-  const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===fid&&t.date)
-    .sort((a,b)=>a[1].date<b[1].date?-1:a[1].date>b[1].date?1:0);
-  /* Units are re-rounded to 4dp on every write and cost to whole rupees, so a long history
-     drifts a little as it is walked back. The slack absorbs that while staying orders of
-     magnitude below anything a misread tx could produce - a diary entry mistaken for a real
-     redemption moves hundreds of units, not hundredths. Too tight a bound here is not a safe
-     default: it threw away answers that were right to the paisa. */
-  const slack=0.01+list.length*0.001;
-  let U=+f.units||0, I=+f.inv||0;
-  const costs={};
-  for(let k=list.length-1;k>=0;k--){
-    const [id,t]=list[k], u=mfTxUnits(t,f);
-    if(u===null) break;
-    if(u===0) continue;
-    if(t.kind==="sip"||t.kind==="in"){
-      U-=u; I-=(+t.amt||0);
-      if(U<-slack) break;        /* the records stopped fitting the books - go no further */
-      if(U<0) U=0; if(I<0) I=0;
-    }else{
-      if(!(U>1e-9)) break;                       /* this payout closed the fund out */
-      const Ub=U+u, Ib=I*Ub/U;
-      costs[id]=Ib-I; U=Ub; I=Ib;
-    }
-  }
-  /* Whatever was reached is sound on its own: each figure is derived from the fund's
-     authoritative state working backward, so trouble further back cannot corrupt what was
-     already computed. Anything not reached is simply absent, and gets disclosed. */
-  return costs;
-}
-/* How many of the units a payout sold had been held over a year. Funds are accounted at
-   AVERAGE cost, so there are no lots to read this off - this builds them from the purchase
-   history purely to get the PROPORTION, and the rupees are then apportioned by it. That is
-   exact under average cost, where every unit carries the same cost, and it guarantees long +
-   short + unknown equals the total the booked figure already shows - a split that does not
-   add up to its own total is worse than no split.
-   Runs FORWARD, unlike mfReleasedCosts, because holding period is a question about
-   chronology: the oldest units are the ones sold first.
-   Units the records cannot explain - a holding that came into the app with no purchase
-   history behind it - are seeded as ONE opening lot carrying no date, and come back as
-   `unk`. Their age is genuinely unrecorded, and guessing it would put real money in the
-   wrong bucket, which is the one outcome this split must never produce. */
-function mfUnitSplits(fid){
+/* The FIFO ledger of a fund's units, built from its own recorded history, and the booked
+   gain of every redemption priced off it: each unit at what IT cost when bought, oldest
+   first. This is the registrar's method - proven against the owner's real portal report on
+   2026-09-18 to the paisa across every fund with a payout this year - and it is the truest
+   reading of the owner's own rule, "the original cost price".
+   Classification learnt from the real data, not assumed: `sip` AND `in` are purchases (a
+   lumpsum arrives as `in` - treating it as unit-less is exactly what once invented a
+   phantom "opening block" of units on a real fund that was in truth a recorded deposit),
+   `swp` and `out`
+   are redemptions. Units = amount / NAV on the day, preferring a nav stored on the tx and
+   falling back to the fund's official history (mfNavCached; mfWarmNavs fetches it).
+   Honesty gates, in order:
+   - a tx that cannot be priced BREAKS the replay: everything after it is unknowable,
+     because the lots from that point on are wrong. Redemptions before the break stand -
+     they used only priced history.
+   - a redemption the lots cannot cover (beyond NAV-rounding dust) also breaks: cost is
+     missing, and booking the covered part would rest on lots that are already suspect.
+   - the replay must END on the fund's actual units, within a slack that scales with the
+     tx count (every stored figure is rounded) - a fund that fails this gate books NOTHING,
+     because a mismatch means the records and the books disagree and any figure from them
+     would be a guess. The gap a missing lumpsum leaves (hundreds of units) dwarfs the
+     slack, so the gate actually fires when it must.
+   NOTE this deliberately diverges from the fund's own average-cost book-keeping (`inv`,
+   the Redeem sheet's preview, the v86 rewind): those stay average-cost - they are the
+   fund's running books - while BOOKED P&L follows the registrar. `rc` on payout txs is
+   still written as the audit trail of what the books did, but nothing reads it for gains
+   any more. Unrealised (average) + booked (FIFO) therefore do not sum to a lifetime total;
+   that is the price of matching the portal, and it is the owner's explicit choice. */
+function mfFifo(fid){
   const f=mfunds()[fid]; if(!f) return null;
   const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===fid&&t.date)
     .sort((a,b)=>a[1].date<b[1].date?-1:a[1].date>b[1].date?1:0);
-  let net=0;
-  for(const [,t] of list){
-    const u=mfTxUnits(t,f); if(u===null) return null;   /* a tx we cannot size - no split */
-    if(!u) continue;
-    net+=(t.kind==="sip"||t.kind==="in")?u:-u;
-  }
-  const open=(+f.units||0)-net;
-  if(open<-0.01) return null;            /* records claim more units than the fund holds */
-  const lots=open>0.0001?[{q:open,d:null}]:[];
-  const out={};
+  const lots=[],res={};
+  let broken=false;
   for(const [id,t] of list){
-    const u=mfTxUnits(t,f); if(!u) continue;
-    if(t.kind==="sip"||t.kind==="in"){ lots.push({q:u,d:t.date}); continue; }
-    let r=u,L=0,S=0,U=0;
+    const amt=+t.amt||0; if(!(amt>0)) continue;
+    const sell=t.kind==="swp"||t.kind==="out";
+    if(broken){ if(sell) res[id]=null; continue; }
+    const nav=+t.nav>0?+t.nav:(f.code?mfNavCached(f.code,t.date):null);
+    if(!(nav>0)){ broken=true; if(sell) res[id]=null; continue; }
+    const u=amt/nav;
+    if(!sell){ lots.push({q:u,p:nav,d:t.date}); continue; }
+    let r=u,cL=0,cS=0,uL=0,uS=0;
     while(r>1e-9&&lots.length){
       const l=lots[0],take=Math.min(l.q,r);
-      if(!l.d) U+=take; else if(heldLong(l.d,t.date)) L+=take; else S+=take;
+      if(heldLong(l.d,t.date)){ uL+=take; cL+=take*l.p; }
+      else{ uS+=take; cS+=take*l.p; }
       l.q-=take; r-=take;
       if(l.q<=1e-9) lots.shift();
     }
-    out[id]={long:L,short:S,unk:U+r};
+    /* dust = NAV-rounding residue; anything larger is a redemption the records cannot cover */
+    if(r>Math.max(0.01,u*1e-4)){ res[id]=null; broken=true; continue; }
+    res[id]={long:uL*nav-cL, short:uS*nav-cS};
   }
-  return out;
+  const endU=lots.reduce((a,l)=>a+l.q,0);
+  const tol=0.25+(+f.units||0)*2e-4+list.length*0.01;
+  const ok=!broken&&Math.abs(endU-(+f.units||0))<=tol;
+  return {res,ok};
 }
 /* A payout that still needs its fund's NAV history to be priced: fetch the history once,
    then re-render so the booked figure fills itself in. Read-only, like mfFillTxNavs. */
 let mfNavWarming=false;
 async function mfWarmNavs(){
   if(mfNavWarming) return;
-  const F=mfunds(), need=new Set();
+  const F=mfunds(), [wa,wb]=fyWindow(0), need=new Set();
   for(const t of Object.values(mfTxs())){
+    if(t.kind!=="swp"&&t.kind!=="out") continue;      /* a payout this FY prices its whole fund */
+    if(!(t.date>=wa&&t.date<=wb)) continue;
     const f=F[t.fid];
     if(!f||!f.code||!mfCounted(f)) continue;
-    if(+t.nav>0||t.kind==="in"||t.kind==="out") continue;   /* priced already, or moves no units */
-    if(!mfNavHist[f.code]) need.add(f.code);
+    if(mfNavHist[f.code]) continue;
+    /* FIFO needs the PURCHASES priced too, so any un-navved tx on the fund wants the history */
+    if(Object.values(mfTxs()).some(x=>x.fid===t.fid&&!(+x.nav>0))) need.add(f.code);
   }
   if(!need.size) return;
   mfNavWarming=true;

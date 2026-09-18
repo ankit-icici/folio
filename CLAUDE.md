@@ -556,13 +556,23 @@ named the label and the long-term rule himself; keep the wording unless he chang
   mutated copies. Those fixtures live in the session scratchpad only - **they are the
   owner's real data and must never enter this repo.** Also rendered live at phone width:
   tile, split row, privacy shutter, "—" state, disclosure line.
-- **Data patch still owed when this note was written**: the FY sell rows in the ledger have
-  no `gl`/`gs` yet. The ICICI-side row's figure comes exactly from its P&L statement; most
-  Groww-side rows take theirs from the Groww capital-gains report; four fills matched NO
-  open statement (a second demat exists), so ask the owner which account they came from
-  before pricing them. Until the patch lands those sales sit in the disclosure count - real
-  money the tile is not yet showing. NOTE the Groww account the app's share positions live
-  in is under a family member's name; the statements quoted are from that account.
+- **The `gl`/`gs` patch LANDED on the live account, 2026-09-18**, on the owner's explicit
+  "write it": all 14 pre-import FY sell rows now carry their broker figures, written through
+  the app's own guarded save and verified by reloading from the server afterwards. Sources:
+  one row from ICICI's P&L statement; nine from the Groww capital-gains report; the last
+  four are ICICI-Direct sales of shares TRANSFERRED IN before selling, which no broker
+  statement can price (a matched-pairs P&L omits a sale whose purchase happened elsewhere) -
+  their costs came from the ledger's own buy rows, proven by elimination: every share of
+  those scrips bought across all accounts reconciled against every share sold, exactly.
+  The owner first thought another Groww login was needed for those four; it was not - the
+  merged ledger already held the purchases. With the patch, `left` is 0 and the tile's total
+  ties to the registrar + both brokers. The dashboard figure and the sale-by-sale table were
+  confirmed with the owner the same day.
+  NOTES for future sessions: the Groww account the app's share positions live in is under a
+  family member's name (statements come from there); the owner's employer-bank share sales
+  in the ICICI trade book stay OUT of all of this by design (ESOP rule above); and a fresh
+  broker import that adds new post-`history.end` sell rows will need the same gl/gs
+  treatment or those sales will sit in the disclosure count.
 
 ## Data durability (do not weaken)
 

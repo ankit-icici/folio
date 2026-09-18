@@ -693,6 +693,61 @@ and 9 holdings whose quantity AND average match the broker's screen to the rupee
   own figure disproved it. **Get the broker's stated buy price before calling a cost basis
   wrong** - the report is at Profile -> Reports -> Stocks - Capital gains, which takes a
   financial-year dropdown and downloads an xlsx carrying per-lot buy date, buy price and P&L.
+- **Parag Parikh (the private fund) was REBUILT from the broker's own records, 2026-09-18,
+  and now reconciles.** Its stored units and cost had drifted (one instalment behind, and its
+  tx list was missing the very first purchase), and the replay was ~15% short. Rebuilt to the
+  broker's **74** transactions - each with its real date, amount and allotment NAV - and its
+  units/cost reset to Groww's official holdings statement (663.955 units, ₹60,240.17). The
+  replay now lands within 1.2 units (0.17%), the fund reconciles, and **the app's computed
+  lifetime return for it came out at 15.48% against the broker statement's own XIRR of
+  15.46%** - an independent check that the rebuilt history is right, not merely self-consistent.
+  How to get this data again (it is the only way to see a full MF history - the orders page
+  silently returns just the newest ~20 rows, and a fund's SIP page shows only ONE
+  registration, which here began a year after the real first purchase and misled the first
+  pass): **Profile -> Reports -> Transactions -> Mutual Funds - Order history**, which takes a
+  financial-year dropdown and downloads an xlsx carrying *units and NAV per transaction*.
+  Pull every year and concatenate. **Profile -> Reports -> Holdings -> Mutual Funds - Holdings
+  statement** gives the authoritative current units, invested value and XIRR - use it as the
+  target, never the MF landing page's summary, which was stale here.
+- **`mfWarmNavs()` only fetches prices for funds with a payout THIS year.** A fund therefore
+  reads "cannot reconcile" until the moment it actually pays out, at which point it warms
+  and prices correctly. That is by design and self-correcting - do not read a cold fund's
+  state as a data fault, and warm every fund's history before judging one.
+
+### What has actually been verified against a broker - and what has NOT (2026-09-18)
+
+The owner asked for a blanket "everything is correct, now and for ever". It was refused, with
+this inventory. **Do not upgrade any line here to "verified" without doing the work.**
+
+**Verified against an outside source:** every FY 26-27 sale (29 of them - funds to the
+registrar's report to the paisa, shares to the two brokers' statements); both purchases
+behind the four elimination-priced sales; all 12 purchases in the owner's own Groww account;
+and 9 holdings whose quantity AND average match the broker's screen to the rupee.
+
+**NOT verified, and each could put a future sale's profit out:**
+- **Zero-cost lots from corporate actions.** Several holdings carry lots recorded at ₹0
+  (bonus entitlements, and demerger children). Zero IS right for a bonus issue. It is NOT
+  automatically right for a demerger, where cost must be apportioned between parent and
+  child per the scheme - and the app has no record of which is which. A wrong apportionment
+  stays invisible until that holding is sold.
+- **The ICICI-held shares were BOUGHT IN GROWW and transferred** - the owner said so when
+  Claude proposed downloading ICICI statements, and he is right: ICICI statements are not
+  the source for them, the Groww order history is. Edelweiss reconciles exactly (the whole
+  ICICI quantity was one Groww purchase), and the Nuvama holding is its demerger entitlement
+  at the exact scheme ratio, so it needs no purchase of its own.
+- **360 One: SETTLED, and the app is right to 6 paise.** Groww's own FY 2024-25 capital-gain
+  report states the buy price for the shares sold that July as **₹550.47** - the original
+  ₹1,100.96 halved once by a bonus - against the app's ₹550.48. Feeding that back: every
+  recorded purchase totals ₹99,719.74, the 40 shares sold released 40 x ₹550.47 = ₹22,018.80,
+  leaving **₹77,700.94** against the app's stored ₹77,701. Nothing is missing.
+  Two wrong turns on the way, both worth remembering: only **22** shares were ever bought -
+  the identical 22-share order the previous evening was **REJECTED for insufficient balance**
+  ("Qty 0/22" on its detail page), and *a Groww order list renders a rejected order exactly
+  like a filled one, so open the detail before counting it*. And Claude told the owner
+  ~₹11,000 was missing, having assumed an averaging convention without checking; the broker's
+  own figure disproved it. **Get the broker's stated buy price before calling a cost basis
+  wrong** - the report is at Profile -> Reports -> Stocks - Capital gains, which takes a
+  financial-year dropdown and downloads an xlsx carrying per-lot buy date, buy price and P&L.
 - **Parag Parikh (the private fund) is SOUND where it counts.** Groww's own invested figure
   matches the app's stored cost to the rupee, and its units match too - so its card and its
   place outside every total are right. Only its historical tx list is partial (~15% of units

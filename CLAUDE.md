@@ -568,6 +568,20 @@ named the label and the long-term rule himself; keep the wording unless he chang
   merged ledger already held the purchases. With the patch, `left` is 0 and the tile's total
   ties to the registrar + both brokers. The dashboard figure and the sale-by-sale table were
   confirmed with the owner the same day.
+  **Independently re-verified 2026-09-18**, on the owner's request, against the SECOND Groww
+  account (his own; the pre-transfer purchases live there). The four fills that no statement
+  could price - because the shares were bought in one account and sold from another - are
+  confirmed: the share purchase matched that account's own order record to the paisa and the
+  day, and the IPO lot has no order row anywhere by nature, its cost being the issue price,
+  which the IPO's own page states and which the OTHER account's capital-gain report shows for
+  an identical same-day allotment. Every other purchase in that account was cross-checked
+  against the ledger too - all matched. No data changed; the elimination-derived figures were
+  already right.
+  Two reading traps found while doing it, worth knowing before trusting a Groww order list:
+  it labels the bank "SBI", not its full name (a name-based search silently finds nothing),
+  and it shows an order's PLACEMENT and its EXECUTION as separate rows - the placement reads
+  "At mkt price", often timed minutes earlier or the previous evening. Counting both
+  double-counts the purchase; the ledger correctly holds one.
   NOTES for future sessions: the Groww account the app's share positions live in is under a
   family member's name (statements come from there); the owner's employer-bank share sales
   in the ICICI trade book stay OUT of all of this by design (ESOP rule above); and a fresh

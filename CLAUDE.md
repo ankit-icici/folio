@@ -442,7 +442,7 @@ preserved across edits — see the booked-P&L section for `rc`.
 
 ### Booked P&L for the current FY (Home hero, v87)
 
-Introduced v87; the fund half was corrected in v88 (see below).
+Introduced v87; the fund half was corrected in v88, split by holding period in v89 (both below).
 A fourth tile on the **Home** hero, **"P&L booked (Current FY)"** — profit actually taken this
 financial year, shares and funds in one figure. Owner asked for it 2026-09-18 and named the
 label himself; keep the wording unless he changes it.
@@ -531,16 +531,55 @@ label himself; keep the wording unless he changes it.
   when the count is non-zero — a permanent caveat under a figure becomes wallpaper.
   The tile shows **"—"**, not ₹0, when nothing was sold all year: "nothing to report" and
   "sold up and came out exactly level" are different statements.
+#### Long term vs short term (v89)
+
+Owner asked for the booked figure split by holding period on 2026-09-18, and gave the rule
+himself: **long term = the units sold had been held more than a year**. Shown as a subordinate
+row under the headline figures, "Long term · held > 1 yr" and "Short term".
+
+- `heldLong(buyD,sellD)` via `plusYear()`: the sale must fall **strictly after** the first
+  anniversary, so selling ON the anniversary is short term. 29 Feb rolls to 1 Mar.
+- **It is a holding-period split, not a tax computation, and must not quietly become one.**
+  The rate and even the twelve-month threshold vary by instrument — debt and many hybrid funds
+  get no equity treatment at all — and the app knows nothing about a fund's category. Said
+  plainly to the owner when it shipped.
+- **Shares are exact.** FIFO already decides which lots a sale ate; each lot now carries its
+  buy date, so the split falls out of the same walk. No second pass, nothing estimated.
+- **Funds have no lots at all** — they are accounted at average cost — so `mfUnitSplits(fid)`
+  builds them from the purchase history purely to get the **proportion** of units that were
+  over a year old, and the rupees are apportioned by it. Under average cost every unit carries
+  the identical cost, so apportioning the gain by unit share is exactly the same as splitting
+  proceeds and cost separately. That is what guarantees **long + short + unknown = the total**;
+  a split that does not add up to its own total is worse than no split, so keep that invariant
+  (there is a test asserting it on every fund scenario).
+  - It runs **forward**, unlike `mfReleasedCosts()`, because holding period is a question about
+    chronology and the oldest units are the ones sold first. Two walks in opposite directions
+    over the same data is deliberate, not an oversight: cost must come backward from the
+    authoritative current state, age must come forward from the purchases.
+  - Units the records cannot explain are seeded as **one opening lot with no date** (computed
+    as `f.units` minus the net of every recorded tx) and come back as `unk`. Their age is
+    genuinely unrecorded. **Do not invent one** — not the first tx's date, not "probably long".
+    Putting real money in the wrong half is the one failure this split must never produce.
+  - So an imported fund with no purchase history behind it reports its whole gain as unknown.
+    That is correct and is disclosed on screen; the fix is to get the fund's instalment history
+    into the app, not to soften the rule.
+- `.ltst` is its own two-column block rather than a reuse of `.cagr`: an inline
+  "Long term +₹15,385" pair wraps at 375px and strands the `+` on a line of its own. Label
+  above value, 15px, so it reads as a breakdown of the figure above it rather than a fifth
+  headline.
 - `.hk.tight` exists because "P&L BOOKED (CURRENT FY)" wraps to two lines at 375px, which
   pushes its figure down and breaks the row's alignment with the cell beside it. Tightened,
   deliberately **not** `nowrap`, so a narrower phone wraps untidily rather than clipping the
   year off the end. Measured after the change: all four labels one line, the two values in
   row 2 within 1px of each other.
-- Verified by extracting the shipped functions and running them in node (**47 assertions**:
+- Verified by extracting the shipped functions and running them in node (**64 assertions**:
   12 share cases incl. FIFO order, the previous-FY boundary at 31 Mar/1 Apr, lots eaten by an
   earlier out-of-window sale, `noLot`, orphan and partly-covered sales, intraday round trip;
   12 fund cases incl. stored-vs-rebuilt cost, the emptied-fund skip, HUF/private exclusion;
-  14 clock and remath cases; **9 cost-rebuild cases**), plus a live render at phone width
+  14 clock and remath cases; **9 cost-rebuild cases; 17 long/short cases** covering the
+  anniversary boundary to the day, leap days, FIFO across an old and a new lot, a long-term
+  loss, undated lots, fund payouts cutting through both lots, the unknown-age opening block,
+  and the sums-to-the-total invariant), plus a live render at phone width
   driven with synthetic data in the real document shape — privacy shutter, the "—" state and
   the uncounted-sale line all confirmed on screen.
   - The cost-rebuild suite is the one worth keeping in step. It **forward-simulates exactly

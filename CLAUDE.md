@@ -663,6 +663,20 @@ of (statement + ICICI-side cost), with the two known-and-explained exceptions ca
 expectation itself - the transferred-in shares the statement carries at nil, and the ICICI
 shares no statement covers.
 
+### CLOSED: HDFC Bank's cost was ₹3,103 high (fixed 2026-09-18)
+
+The last holding without a broker document behind it. Settled by reconstruction from four
+sources that agree: the other Groww account's full order history (16 buys, 1 sell) plus its
+holdings statement prove its 130 shares cost ₹96,959 to within 75 paise; that broker's
+capital-gain report names the 14-07-2021 lot as the one 5 shares were sold from; ICICI's P&L
+names its own 2017 lot and its 5-share sale; and ICICI's Portfolio page - useless for
+quantity - turns out to state that 2017 holding's cost exactly right at ₹13,227.90.
+The app had kept the full 13-share Groww lot after 5 of it were sold, and carried 5 too few
+of the cheaper 2017 shares. Quantity was right (175) all along, which is why nothing caught
+it; the misallocation alone cost ₹3,103. Fixed by moving 5 shares between the two lots -
+no price or date touched.
+**Every holding now ties to a broker figure, worst gap ₹20.**
+
 ### The full verification sweep (2026-09-18) - results
 ### The full verification sweep (2026-09-18) - results
 

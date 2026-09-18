@@ -639,22 +639,31 @@ The statement reconciled **every** holding to within a few rupees except the one
 below. Use it, and use the ICICI **Demat Allocation** page for that side. Both screens - the
 Groww holdings screen and ICICI's Portfolio page - are unreliable in the same way.
 
-### OPEN: the Edelweiss -> Nuvama demerger cost was never apportioned
+### CLOSED: the Edelweiss -> Nuvama demerger apportionment (fixed 2026-09-18)
 
-Measured against the holdings statement, 2026-09-18: **Edelweiss is overstated by ~₹13,066
-and Nuvama understated by ~₹13,055.** The app gave the Nuvama entitlement a cost
-(₹350.83/share) without taking it off Edelweiss, so the COMBINED total across the two is
-right to ₹11 - which is exactly why every total-level check passed - while each holding is
-individually wrong by ₹13,000. The tell is that the app's whole Nuvama cost is *less* than
-the statement's for just the Groww-held subset, i.e. its remaining shares imply a NEGATIVE
-cost.
-Not yet corrected: the totals to hit are known (statement + the ICICI-side share of the
-original purchase), but spreading the adjustment back across the app's reconstructed lots
-involves a judgement the lots cannot settle on their own, and doing it wrong would move
-₹14,000 to the wrong place. Agree the approach with the owner first.
-**This is the live demonstration of the demerger warning in the corporate-actions section -
-a demerger that is not apportioned hides perfectly in every portfolio-level total.**
+The app had given the Nuvama entitlement a cost without taking it off Edelweiss, so
+Edelweiss was overstated ~₹13,066 and Nuvama understated ~₹13,055 while the COMBINED total
+across the two was right to ₹11 - which is exactly why every portfolio-level check passed
+for weeks. The tell: the app's entire Nuvama cost was *less* than the statement's cost for
+just its Groww-held subset, implying a negative cost on the remainder.
 
+Fixed the way a demerger actually works - a uniform PERCENTAGE off each affected share's
+cost, not a flat rupee amount:
+- The retained fraction was **derived from the broker's own statement** rather than guessed:
+  Edelweiss keeps **0.68556**, Nuvama takes **0.31444**. Solved from
+  `f = (statement Edelweiss total − post-demerger lot cost) / pre-demerger Groww lot cost`.
+- Only lots dated before the demerger (2023-12-03, the date the Nuvama entitlement lots
+  carry) were scaled; every later purchase was untouched, which is correct and also keeps
+  FIFO order and per-lot proportions faithful, so a PARTIAL future sale prices correctly too.
+- The Nuvama entitlement lots went from ₹350.83 to ₹572.92 per share.
+- Cost-neutral by construction: combined total moved ₹305,267 -> ₹305,256, which is the
+  broker's own combined figure (both statement totals plus the ICICI-side purchase).
+Result: **all fifteen holdings now tie to the holdings statement**, each within a few rupees
+of (statement + ICICI-side cost), with the two known-and-explained exceptions carried in the
+expectation itself - the transferred-in shares the statement carries at nil, and the ICICI
+shares no statement covers.
+
+### The full verification sweep (2026-09-18) - results
 ### The full verification sweep (2026-09-18) - results
 
 Run after the owner asked for a blanket "everything is correct for ever", which was refused

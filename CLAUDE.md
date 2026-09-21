@@ -719,6 +719,40 @@ Run after the owner asked for a blanket "everything is correct for ever", which 
   and prices correctly. That is by design and self-correcting - do not read a cold fund's
   state as a data fault, and warm every fund's history before judging one.
 
+### Every share PURCHASE verified, trade by trade (2026-09-21)
+
+The owner asked for every individual purchase price - not averages - to be checked across all
+three broker accounts. Done by pulling each broker's own complete export, stacking them into one
+spreadsheet, and comparing against the live app. **Result: every purchase price and every
+quantity in the app is correct.** No data was changed.
+
+**Where a COMPLETE history actually comes from** (the screens all lie by omission):
+
+- **ICICI Direct** - *Orders -> Order/Trade Book*, download button, one query for the whole
+  range (see the gotcha above for why the CSV beats the screen). Plus **Segment: IPO** for
+  allotments, and *Statements -> P&L Statement* per financial year for matched pairs.
+- **Groww, either account** - *Profile -> Reports -> Transactions -> Stocks - Order history*,
+  a from/to range that reaches back to **1 April 2020 and no further** (the report's own floor,
+  not the account's), downloaded as xlsx. This is the report the "lazy-loading orders page"
+  gotcha was written about; use this instead and the scrolling problem disappears. Pair it with
+  *Reports -> Holdings -> Stocks - Holdings statement* for the authoritative current position.
+
+**Three findings were raised with the owner and all three were wrong - the app was right every
+time.** Each had the same cause: concluding from the accounts in view. The project already
+carries that lesson from 2026-09-18 ("establish the full list of accounts BEFORE concluding a
+quantity is wrong") and it was not followed. In order: an IPO allotment that looked doubled was
+held across two demats; a rights-issue holding the broker's statement omits was real and paid
+for; and the split-plus-bonus lot above. **There is a FOURTH demat** beyond the three that
+produce statements - it holds a single IPO allotment and nothing else, and no export covers it.
+Ask the owner before treating any shortfall as an error.
+
+**Method notes worth keeping:** a broker's holdings statement values transferred-in shares at
+nil, so the app's cost for a transferred holding will legitimately exceed it; a position's
+in-app lots are the FIFO *residue* after pre-`history.end` sales, so a lot's quantity often will
+not match any single broker order while its PRICE still must; and comparing an app lot list
+against "everything ever bought" without deducting the cost released on shares already sold
+produces a large phantom shortfall - that mistake was made here and had to be retracted.
+
 ### What has actually been verified against a broker - and what has NOT (2026-09-18)
 
 The owner asked for a blanket "everything is correct, now and for ever". It was refused, with
@@ -794,6 +828,15 @@ one of them and wrong for the other two.
   the child at ₹0 and leaving the parent alone keeps the TOTAL right while making both sides
   individually wrong, and that only surfaces years later when one is sold. Nuvama in this
   portfolio came from Edelweiss exactly this way.
+
+**A lot can carry BOTH a halved price and a ₹0 lot, and that is not a double count**
+(learnt 2026-09-21). A purchase old enough to have been through a **split** *and* a later
+**bonus** legitimately shows both marks: the split halved its price and doubled its quantity,
+the bonus then added free shares beside it. Only the oldest lots look like this; anything
+bought after the split carries one free lot and nothing else, which makes the old one look
+anomalous next to its neighbours. It was reported to the owner as a duplicated bonus and it
+was not - the demat register held exactly the quantity the two events imply. **Count the
+corporate actions the lot has lived through before calling it double-marked.**
 
 **The self-check to give the owner, which needs no understanding of the above:** after
 entering anything, the holding's **quantity AND average price** should both match his
@@ -987,16 +1030,32 @@ decimals — that is how the "private funds move no total and no return" rule wa
   Either import both sides, or exclude the record from the return calculation.
 - Broker exports are dirty: Groww emits **₹0 "SELL" rows for off-market transfers** between the
   owner's own accounts (drop them — internal moves, not trades) and for rights/bonus
-  entitlements, and some rows carry corrupt dates (year 1971).
+  entitlements, and some rows carry corrupt dates (year 1971). **A 1971 date is recoverable, not
+  lost** (2026-09-21): those rows are BSE orders whose Exchange Order Id begins with the trade's
+  epoch-milliseconds timestamp, so the first 13 digits decode straight back to the real date.
+  Every affected row checked this way landed in a plausible window agreeing with its neighbours.
 - **ICICI Direct**: the trading UI shows only today. The history lives on `ireports.icicidirect.com`
   — *Orders → Order/Trade Book* (set the period, then press View) for trades, and
   *Statements → P&L Statement* for matched buy/sell pairs with cost basis, which is the
   authoritative source for a realised gain. Its *Capital Gains* statement covers mutual funds
   only. Its instrument codes are internal and are **not** NSE tickers (DHOTRA is Dhoot
   Transmission, whose real symbol is DHOOTTRANS) — always resolve the symbol before storing it.
-- **An IPO allotment produces no buy order anywhere.** The "never count an orphan sell" rule
-  above then silently discards the sale as unmatched, which is how a real 17 Aug 2026 trade went
-  missing from the ledger entirely. When a sell has no buy, look for an allotment before deleting it.
+  **Use the download button, not the screen** (2026-09-21): the Order/Trade Book's CSV export
+  already carries real NSE symbols instead of the internal codes, and contains executed and
+  part-executed rows only, so rejected / expired / cancelled orders — which the screen renders
+  identically to filled ones — cannot be miscounted. The period picker accepts a range of any
+  length back to 2007, so one query covers the whole history; the preset buttons only reach the
+  previous financial year. The end date cannot be today. The **Segment** dropdown also holds
+  IPO, FD/Bonds, Mutual Funds, F&O, Commodity and Currency — Equity alone is not the full picture.
+- **An IPO allotment DOES have a purchase record - this file said otherwise for months and was
+  wrong (corrected 2026-09-21).** Both brokers record one, just not where a share trade lives:
+  ICICI keeps applications under **Order/Trade Book -> Segment: IPO**, where *View Details* on an
+  allotted row states the bid quantity and price; Groww folds allotments into **Stocks - Order
+  history** like any other buy (they are recognisable by a short numeric order id and a 15:30
+  timestamp). The old claim was used to justify *estimating* a cost rather than looking it up -
+  including for the 17 Aug 2026 trade, whose allotment price was sitting in ICICI's IPO tab all
+  along. The "never count an orphan sell" rule still stands; the fix is to go and find the
+  allotment, not to assume none exists.
 - **Duplicate function declarations shadow silently.** Rewriting a screen and leaving the old
   helper behind means the later declaration wins and the new one never runs — no error, just a
   UI that ignores input. After any rewrite: `grep -c "function <name>"` and expect 1.

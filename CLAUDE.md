@@ -388,8 +388,21 @@ preserved across edits — see the booked-P&L section for `rc`.
   - **v94 always offers the action** (except on a paused plan): the gold *Record this month's…*
     button when the plan is flagged, a quiet *Record an instalment* link when it is not. The
     sheet still pre-fills and still confirms, so nothing is posted silently.
-  - `planStatus` itself is UNCHANGED - the v82 due rule and its 18 verified cases stand. Only
-    the button's visibility moved. Do not "tidy" the fallback away: it is what keeps a lumpsum
+  - **v95 finished the job: the row now SAYS when it is recorded.** v94 showed the quiet link
+    on every non-due plan, including ones already recorded, so tapping *Record an instalment*
+    left the link sitting there exactly as before - the owner reported it the same day and was
+    right. `planStatus` now also returns `done`: the plans a payment can be positively
+    attributed to, meaning a tx tagged with that plan's `pid`, **or** any qualifying tx on a
+    fund carrying exactly one live plan (nothing to confuse it with). A row renders the gold
+    button when due, "SIP recorded this month ✓" when done, and the quiet link otherwise.
+  - **`due` and `left` are byte-identical to v82.** The skip condition was not touched; `done`
+    is computed inside the same branch. Proven by a differential run of the extracted function
+    in node - 17 assertions, 7 of them running old and new side by side over the same datasets
+    and asserting `due`/`left`/`total` match exactly.
+  - The deliberate asymmetry: on a multi-plan fund an untagged payment still silences the nag
+    (v82) but now claims NOTHING as recorded, so all three rows keep their link. That is the
+    honest answer - the app genuinely cannot tell which tranche was paid - and it is what stops
+    a legacy entry from hiding a real one again. Do not "tidy" the fallback away: it is what keeps a lumpsum
     from nagging, and it self-heals as soon as every instalment on a fund is recorded by a
     build that tags. September 2026 was the only affected month.
   - Lesson worth generalising: **a nudge that can be wrong must never be the only door.** Any

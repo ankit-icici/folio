@@ -399,6 +399,16 @@ preserved across edits — see the booked-P&L section for `rc`.
     is computed inside the same branch. Proven by a differential run of the extracted function
     in node - 17 assertions, 7 of them running old and new side by side over the same datasets
     and asserting `due`/`left`/`total` match exactly.
+  - **The one legacy entry was tagged by hand on the LIVE account, 2026-09-21, on the owner's
+    "tag it".** September's untagged Helios instalment was given the `pid` of the day-1 plan -
+    attribution was unambiguous (one untagged entry on the fund, one plan on day 1, and the
+    amounts of the other two plans are nothing like it). Written through `mfWrite` -> the
+    app's own guarded `saveRemote()` (never `force`), only the `pid` field touched, verified by
+    reloading the whole document from the server afterwards; units and cost were unchanged.
+    The effect was immediate and correct: the remaining tranche stopped being silenced and
+    surfaced as DUE with its gold banner. There is no UI for setting a `pid` - `mfTxSheet` only
+    preserves one - so this is a console-only repair; if it is ever needed again, assert that
+    exactly one plan and one untagged tx match before writing.
   - The deliberate asymmetry: on a multi-plan fund an untagged payment still silences the nag
     (v82) but now claims NOTHING as recorded, so all three rows keep their link. That is the
     honest answer - the app genuinely cannot tell which tranche was paid - and it is what stops

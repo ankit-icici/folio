@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v94";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v95";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2069,22 +2069,34 @@ function planStatus(kind){
   const F=mfunds(), TX=Object.values(mfTxs());
   const plans=kind==="sip"?mfSips():mfSwps();
   const K=kind==="sip"?{sip:1,in:1}:{swp:1,out:1};
-  let total=0; const due=[], left=[];
+  /* how many LIVE plans of this kind sit on each fund - an untagged payment can only be
+     attributed with confidence when there is exactly one candidate */
+  const nLive={};
+  for(const s of Object.values(plans)) if(!sipPaused(s)) nLive[s.fid]=(nLive[s.fid]||0)+1;
+  let total=0; const due=[], left=[], done=[];
   for(const [id,s] of Object.entries(plans)){
     const f=F[s.fid]; if(!f) continue;
     if(sipPaused(s)) continue;                       /* no money is moving - not expected */
     total++;
-    if(TX.some(t2=>t2.fid===s.fid&&K[t2.kind]&&
-               String(t2.date||"").slice(0,7)===ym&&(!t2.pid||t2.pid===id))) continue;
+    const pay=TX.filter(t2=>t2.fid===s.fid&&K[t2.kind]&&String(t2.date||"").slice(0,7)===ym);
+    if(pay.some(t2=>!t2.pid||t2.pid===id)){          /* the v82 rule, unchanged */
+      /* ...but only call it DONE when the payment is positively THIS plan's: tagged to it, or
+         the fund carries a single live plan, so there is nothing to confuse it with. On a fund
+         with several plans an untagged payment still silences the nag (v82) but must not claim
+         any one of them is recorded - that is what stranded two real instalments in Sept 2026. */
+      if(pay.some(t2=>t2.pid===id)||nLive[s.fid]===1) done.push({id,s,f});
+      continue;
+    }
     left.push({id,s,f});                             /* not recorded this month yet */
     if((+s.day||1)<=dom) due.push({id,s,f});         /* ...and its day has already passed */
   }
-  return {total,due,left};
+  return {total,due,left,done};
 }
 const planDue=kind=>planStatus(kind).due;
 const sipDue=()=>planDue("sip");
 const swpDue=()=>planDue("swp");
 const planDueIds=kind=>{const m={}; for(const d of planDue(kind)) m[d.id]=1; return m;};
+const planDoneIds=kind=>{const m={}; for(const d of planStatus(kind).done) m[d.id]=1; return m;};
 /* The price for the date picked, from the same NAV service the funds already use. History
    comes down once per fund per session (newest first, dates DD-MM-YYYY) and is cached. A
    holiday or weekend falls back to the last traded day before it - the real feed has gaps
@@ -2361,7 +2373,7 @@ function mfPlansHTML(kind){
   const nPaused=rows.filter(r=>!on(r)).length;
   /* both kinds can be due: an unrecorded SIP means units missing, an unrecorded SWP means
      units still showing that the AMC has already paid out */
-  const due=planDueIds(kind);
+  const due=planDueIds(kind), done=planDoneIds(kind);
   const nDue=Object.keys(due).length;
   /* the month at a glance: the gold banner below only covers what is OVERDUE, this line also
      counts the plans whose day has not come yet, so "all recorded" really means all */
@@ -2392,6 +2404,8 @@ function mfPlansHTML(kind){
         '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>'+
         (hold?""
           :due[id]?'<div class="acts"><button class="buy" data-mfrec="'+kind+':'+id+'">Record this month’s '+(kind==="sip"?'instalment':'payout')+'</button></div>'
+          :done[id]?'<div class="acts"><span class="hint" style="padding:0 2px">'+W+
+             ' recorded this month <span class="gain">✓</span></span></div>'
           :'<div class="acts"><button class="linky" data-mfrec="'+kind+':'+id+'">Record '+(kind==="sip"?'an instalment':'a payout')+'</button></div>')+
         (hold?'<div class="acts"><button class="buy" data-mfres="'+kind+':'+id+'">Resume it now</button></div>':"")+
         '</div>';}).join("")+'</div>'

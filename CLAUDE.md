@@ -374,6 +374,27 @@ preserved across edits — see the booked-P&L section for `rc`.
   - Verified by differential runs of the extracted `planDue` in node (18 cases: due/cleared/
     stale-month/paused, per-plan tags, untagged fallback, clamp maths, payout maths incl. the
     close-out edge), plus a live check after deploy.
+- **An UNTAGGED payment silences every plan on its fund - and that stranded two real
+  instalments (v94, 2026-09-21).** The v82 fallback above (a tx with no `pid` answers the
+  due-check for every plan on the fund) is correct for a lumpsum, but it also fires for any
+  instalment recorded *before v82 shipped*, because those carry no `pid` either. On a fund with
+  ONE plan that is harmless. On the fund carrying three, September's first instalment - recorded
+  under an older build - marked all three as settled, so the two later tranches were never
+  flagged and the owner reported the missing nag himself.
+  - **The worse half was that he could not record them at all.** `mfPlanHTML` only emitted the
+    *Record this month's instalment* button when the plan was in `due`. No flag meant no button,
+    and no other route moves units - the Lumpsum diary deliberately does not. A wrong flag
+    therefore locked the owner out of his own data.
+  - **v94 always offers the action** (except on a paused plan): the gold *Record this month's…*
+    button when the plan is flagged, a quiet *Record an instalment* link when it is not. The
+    sheet still pre-fills and still confirms, so nothing is posted silently.
+  - `planStatus` itself is UNCHANGED - the v82 due rule and its 18 verified cases stand. Only
+    the button's visibility moved. Do not "tidy" the fallback away: it is what keeps a lumpsum
+    from nagging, and it self-heals as soon as every instalment on a fund is recorded by a
+    build that tags. September 2026 was the only affected month.
+  - Lesson worth generalising: **a nudge that can be wrong must never be the only door.** Any
+    future flag that gates an action needs a manual path beside it.
+
 - **The record sheets fetch the price for the date picked (v83).** `mfNavOn(code, day)` pulls
   the fund's full NAV history from `api.mfapi.in/mf/<code>` once per fund per session
   (`mfNavHist` cache; rows newest-first, dates DD-MM-YYYY) and returns the price on `day`, or

@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v93";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v94";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -2390,7 +2390,9 @@ function mfPlansHTML(kind){
         '<span>'+(hold?esc(pauseLabel(x))
                       :'on the '+ord(+x.day||1)+' of every month'+(t?' · lands as a purchase there':''))+'</span></div>'+
         '<div class="er2"><b class="mono">'+rupee(+x.amt||0)+'</b><i>›</i></div></button>'+
-        (due[id]?'<div class="acts"><button class="buy" data-mfrec="'+kind+':'+id+'">Record this month’s '+(kind==="sip"?'instalment':'payout')+'</button></div>':"")+
+        (hold?""
+          :due[id]?'<div class="acts"><button class="buy" data-mfrec="'+kind+':'+id+'">Record this month’s '+(kind==="sip"?'instalment':'payout')+'</button></div>'
+          :'<div class="acts"><button class="linky" data-mfrec="'+kind+':'+id+'">Record '+(kind==="sip"?'an instalment':'a payout')+'</button></div>')+
         (hold?'<div class="acts"><button class="buy" data-mfres="'+kind+':'+id+'">Resume it now</button></div>':"")+
         '</div>';}).join("")+'</div>'
     :'<p class="hint">None recorded.</p>')+

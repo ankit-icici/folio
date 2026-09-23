@@ -609,6 +609,10 @@ named the label and the long-term rule himself; keep the wording unless he chang
     not left out, an empty reply is not cached, a failed download is not cached, the priced
     figure after download, the device copy is kept, the next launch is correct with no
     download, and a tx newer than the copy triggers exactly one fresh download.
+  - **Verified on the LIVE account, 2026-09-23, on v96:** the first launch showed "…" for
+    about 20 s and then the full figure (`left` 0, never the partial one); a relaunch showed
+    the full figure 2 s after load with no download at all. Only the funds that need pricing
+    are kept on the device (three, about 90 KB).
 - **The long/short rule** (`heldLong` via `plusYear`): the sale must fall **strictly after**
   the first anniversary - selling ON the anniversary is short; 29 Feb rolls to 1 Mar. It is
   a holding-period split, not a tax computation (debt/hybrid thresholds differ and the app

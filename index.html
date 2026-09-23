@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v95";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v96";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1699,7 +1699,7 @@ const mfPrivate=f=>!!f.priv;
    never guessed. `unk` stays in the shape for the stock side; a priced fund lot always
    knows its date, so funds contribute nothing to it now. */
 function mfRealisedWin(from,to){
-  const F=mfunds(); let net=0,n=0,skipped=0,long=0,short=0,unk=0;
+  const F=mfunds(); let net=0,n=0,skipped=0,wait=0,long=0,short=0,unk=0;
   const fifo={};                          /* one lot replay per fund, reused across its txs */
   for(const [id,t] of Object.entries(mfTxs())){
     if(t.kind!=="swp"&&t.kind!=="out") continue;
@@ -1708,10 +1708,10 @@ function mfRealisedWin(from,to){
     if(!(+t.amt>0)) continue;
     if(!(t.fid in fifo)) fifo[t.fid]=mfFifo(t.fid);
     const w=fifo[t.fid], g=w&&w.ok?w.res[id]:null;
-    if(!g){ skipped++; continue; }
+    if(!g){ if(w&&w.wait) wait++; else skipped++; continue; }
     net+=g.long+g.short; long+=g.long; short+=g.short; n++;
   }
-  return {net,n,skipped,long,short,unk};
+  return {net,n,skipped,wait,long,short,unk};
 }
 function mfReturns(){
   const F=mfunds(); let inv=0,cur=0;
@@ -1829,7 +1829,7 @@ function ledgerWin(from,to){
 function bookedFY(){
   const [a,b]=fyWindow(0);
   const s=realisedWin(a,b), m=mfRealisedWin(a,b), l=ledgerWin(a,b);
-  return {net:s.net+m.net+l.net, n:s.n+m.n+l.n, left:s.naked+m.skipped+l.unpriced,
+  return {net:s.net+m.net+l.net, n:s.n+m.n+l.n, left:s.naked+m.skipped+l.unpriced, wait:m.wait,
           long:s.long+m.long+l.long, short:s.short+m.short+l.short, unk:s.unk+m.unk};
 }
 function homeHeroHTML(t){
@@ -1844,15 +1844,18 @@ function homeHeroHTML(t){
       '<div><div class="hk">Unrealized P&L</div><div class="hv mono '+cls(pl)+'">'+skfmt(pl)+'</div></div>'+
       /* a dash, not ₹0, when nothing has been sold all year: "nothing to report" and
          "sold up and came out exactly level" are not the same statement */
-      '<div class="r"><div class="hk tight">P&L booked (Current FY)</div><div class="hv mono '+cls(bk.net)+'">'+
-        (bk.n?skfmt(bk.net):'—')+'</div></div>'+
+      /* v96: while a fund's price history is still downloading, all three booked figures
+         show "…" instead of a partial sum - the partial one is what read as the figure
+         jumping about. With the history kept on the device this is a first-launch moment. */
+      '<div class="r"><div class="hk tight">P&L booked (Current FY)</div><div class="hv mono '+(bk.wait?"":cls(bk.net))+'">'+
+        (bk.wait?'…':bk.n?skfmt(bk.net):'—')+'</div></div>'+
     '</div>'+
     /* the split only earns its row once something has actually been booked */
-    (bk.n?'<div class="ltst">'+
+    (bk.n||bk.wait?'<div class="ltst">'+
       '<div><div class="hk">Long term · held &gt; 1 yr</div>'+
-        '<div class="ltv mono '+cls(bk.long)+'">'+skfmt(bk.long)+'</div></div>'+
+        '<div class="ltv mono '+(bk.wait?"":cls(bk.long))+'">'+(bk.wait?'…':skfmt(bk.long))+'</div></div>'+
       '<div class="r"><div class="hk">Short term</div>'+
-        '<div class="ltv mono '+cls(bk.short)+'">'+skfmt(bk.short)+'</div></div>'+
+        '<div class="ltv mono '+(bk.wait?"":cls(bk.short))+'">'+(bk.wait?'…':skfmt(bk.short))+'</div></div>'+
     '</div>':"")+
     '<div class="gl"><span class="live'+(sync==="live"?"":(sync==="init"?" wait":" off"))+'"><i></i>'+st+
       (sync==="live"&&stamp?' · '+esc(ago(stamp)):"")+'</span></div>'+
@@ -1879,11 +1882,15 @@ function homeHTML(t){
   /* Only ever on screen when something genuinely could not be worked out. Silence is the
      normal state; a permanent caveat under a figure becomes wallpaper and stops being read. */
   const bk=bookedFY(), notes=[];
+  if(bk.wait) notes.push(Object.keys(mfNavFail).length&&!Object.keys(mfNavLoading).length
+    ?'The booked figure is waiting on fund prices — the price service didn’t answer, so the app '+
+     'will try again in a minute.'
+    :'Fetching fund prices to work out the booked figure…');
   if(bk.left) notes.push(bk.left+' sale'+(bk.left===1?"":"s")+' this year '+
     (bk.left===1?"is":"are")+' left out of the booked figure — what '+(bk.left===1?"it":"they")+
     ' originally cost you isn’t in your records, so there is no profit to work out from it. '+
     'Everything else is counted.');
-  if(Math.abs(bk.unk)>=1) notes.push('<b class="mono">'+skfmt(bk.unk)+'</b> of that is in neither '+
+  if(!bk.wait&&Math.abs(bk.unk)>=1) notes.push('<b class="mono">'+skfmt(bk.unk)+'</b> of that is in neither '+
     'the long nor the short term figure. Those units were already there when the holding came '+
     'into the app, with no purchase date behind them, so how long you had held them isn’t on '+
     'record — and putting them in the wrong half would be worse than leaving them out.');
@@ -2101,14 +2108,55 @@ const planDoneIds=kind=>{const m={}; for(const d of planStatus(kind).done) m[d.i
    comes down once per fund per session (newest first, dates DD-MM-YYYY) and is cached. A
    holiday or weekend falls back to the last traded day before it - the real feed has gaps
    (12-14 Sep 2026, weekend plus a holiday, is one). */
-let mfNavHist={};
+/* v96: the history is also KEPT ON THE DEVICE (`nivesh_navh`), stamped with the day it was
+   fetched (`mfNavAt`). Before this it lived only for the session, and one full-history
+   download from mfapi was measured at 60 s - so every launch the booked-P&L tile first showed
+   a figure with the fund payouts missing and only later the real one, which the owner saw as
+   the long-term figure jumping between two values. A cached history answers any day ON OR
+   BEFORE its fetch day (past NAVs never change); a later day needs a fresh download.
+   A failed or empty download is never cached - v95 cached `[]` on a bad reply, which left
+   that fund unpriceable for the rest of the session. */
+const NAVH_KEY="nivesh_navh";
+let mfNavHist={}, mfNavAt={}, mfNavFail={};
+try{ const s=JSON.parse(localStorage.getItem(NAVH_KEY)||"{}");
+  for(const [c,v] of Object.entries(s))
+    if(v&&Array.isArray(v.h)&&v.h.length&&v.at){ mfNavHist[c]=v.h; mfNavAt[c]=v.at; }
+}catch(e){}
+const mfNavCovers=(code,day)=>!!mfNavHist[code]&&!!mfNavAt[code]&&day<=mfNavAt[code];
+const mfNavLoading={};
+function mfNavFetch(code){
+  if(!mfNavLoading[code]) mfNavLoading[code]=(async()=>{
+    try{
+      const j=await fetch("https://api.mfapi.in/mf/"+code,{cache:"no-store"}).then(r=>r.json());
+      const h=(j&&Array.isArray(j.data))?j.data:[];
+      if(!h.length) throw 0;
+      mfNavHist[code]=h; mfNavAt[code]=today(); delete mfNavFail[code];
+      mfNavKeep();
+    }catch(e){ mfNavFail[code]=Date.now(); }
+    finally{ delete mfNavLoading[code]; }
+  })();
+  return mfNavLoading[code];
+}
+/* Only the stretch any recorded tx could ask for is kept (from 40 days before the fund's
+   first tx), so a decade of daily prices per fund does not sit in storage for nothing. */
+function mfNavKeep(){
+  try{
+    const first={};
+    for(const t of Object.values(mfTxs())){ const f=mfunds()[t.fid];
+      if(f&&f.code&&t.date&&(!first[f.code]||t.date<first[f.code])) first[f.code]=t.date; }
+    const out={};
+    for(const [c,h] of Object.entries(mfNavHist)){
+      if(!mfNavAt[c]) continue;
+      const lo=first[c]?new Date(Date.parse(first[c]+"T00:00:00Z")-40*864e5).toISOString().slice(0,10):"";
+      out[c]={at:mfNavAt[c],h:h.filter(r=>(r.date.slice(6,10)+"-"+r.date.slice(3,5)+"-"+r.date.slice(0,2))>=lo)};
+    }
+    localStorage.setItem(NAVH_KEY,JSON.stringify(out));
+  }catch(e){}
+}
 async function mfNavOn(code,day){
   try{
-    if(!mfNavHist[code]){
-      const j=await fetch("https://api.mfapi.in/mf/"+code).then(r=>r.json());
-      mfNavHist[code]=(j&&j.data)||[];
-    }
-    for(const r of mfNavHist[code]){
+    if(!mfNavCovers(code,day)) await mfNavFetch(code);
+    for(const r of mfNavHist[code]||[]){
       const d=r.date.slice(6,10)+"-"+r.date.slice(3,5)+"-"+r.date.slice(0,2);
       if(d<=day){ const n=parseFloat(r.nav); return n>0?{nav:n,date:d}:null; }
     }
@@ -2120,7 +2168,7 @@ async function mfNavOn(code,day){
    mfWarmNavs() fetches it and re-renders. */
 const mfNavMemo={};
 function mfNavCached(code,day){
-  const h=mfNavHist[code]; if(!h||!day) return null;
+  const h=mfNavHist[code]; if(!h||!day||!mfNavCovers(code,day)) return null;
   const k=code+":"+day;
   if(k in mfNavMemo) return mfNavMemo[k];
   let v=null;
@@ -2163,13 +2211,17 @@ function mfFifo(fid){
   const list=Object.entries(mfTxs()).filter(([,t])=>t.fid===fid&&t.date)
     .sort((a,b)=>a[1].date<b[1].date?-1:a[1].date>b[1].date?1:0);
   const lots=[],res={};
-  let broken=false;
+  let broken=false, wait=false;
   for(const [id,t] of list){
     const amt=+t.amt||0; if(!(amt>0)) continue;
     const sell=t.kind==="swp"||t.kind==="out";
     if(broken){ if(sell) res[id]=null; continue; }
     const nav=+t.nav>0?+t.nav:(f.code?mfNavCached(f.code,t.date):null);
-    if(!(nav>0)){ broken=true; if(sell) res[id]=null; continue; }
+    /* a price that is only missing because the history has not downloaded yet is not a
+       gap in the records - `wait` says so, and the tile holds back rather than showing a
+       figure with this fund's payouts left out (v96) */
+    if(!(nav>0)){ broken=true; if(f.code&&!mfNavCovers(f.code,t.date)) wait=true;
+      if(sell) res[id]=null; continue; }
     const u=amt/nav;
     if(!sell){ lots.push({q:u,p:nav,d:t.date}); continue; }
     let r=u,cL=0,cS=0,uL=0,uS=0;
@@ -2194,7 +2246,7 @@ function mfFifo(fid){
      history is genuinely incomplete showed 15%. Both still fail, by design. */
   const tol=0.25+(+f.units||0)*5e-3+list.length*0.01;
   const ok=!broken&&Math.abs(endU-(+f.units||0))<=tol;
-  return {res,ok};
+  return {res,ok,wait};
 }
 /* A payout that still needs its fund's NAV history to be priced: fetch the history once,
    then re-render so the booked figure fills itself in. Read-only, like mfFillTxNavs. */
@@ -2207,15 +2259,19 @@ async function mfWarmNavs(){
     if(!(t.date>=wa&&t.date<=wb)) continue;
     const f=F[t.fid];
     if(!f||!f.code||!mfCounted(f)) continue;
-    if(mfNavHist[f.code]) continue;
-    /* FIFO needs the PURCHASES priced too, so any un-navved tx on the fund wants the history */
-    if(Object.values(mfTxs()).some(x=>x.fid===t.fid&&!(+x.nav>0))) need.add(f.code);
+    /* FIFO needs the PURCHASES priced too, so any un-navved tx the kept history does not
+       reach (v96: a device copy answers up to the day it was fetched) wants a download */
+    if(Object.values(mfTxs()).some(x=>x.fid===t.fid&&!(+x.nav>0)&&!mfNavCovers(f.code,x.date)))
+      need.add(f.code);
   }
   if(!need.size) return;
   mfNavWarming=true;
-  try{ for(const code of need) await mfNavOn(code,today()); }
+  /* all at once, not one after another: a single download has been measured at 60 s */
+  try{ await Promise.all([...need].map(mfNavFetch)); }
   finally{ mfNavWarming=false; }
   safeRender();
+  /* a download that failed is tried again a minute later rather than on the next tap */
+  if([...need].some(c=>!mfNavCovers(c,today()))) setTimeout(mfWarmNavs,60e3);
 }
 /* Fills the NAV line on ledger rows whose tx predates v85 (no nav stored) from the per-fund
    history cache. Purely cosmetic and read-only - it never writes to the document. Rows are

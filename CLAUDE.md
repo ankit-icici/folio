@@ -89,7 +89,8 @@ The app was called **nivesh** before it was Folio, and that name still keys ever
 persists, so grepping for "folio" finds none of it: Drive files `nivesh-acc-<hash16>.json`
 (`FILE_PREFIX`), and localStorage `nivesh_auth`, `nivesh_cache_<user>`, `nivesh_mask`,
 `nivesh_theme`, `nivesh_recent_<user>`, `nivesh_bk_<user>` (when the device copy was last
-saved - drives the daily backup nudge). Renaming any of them orphans live data or signs
+saved - drives the daily backup nudge), `nivesh_navh` (v96: public fund NAV histories kept on
+the device so booked P&L is right at launch; safe to clear, it just re-downloads). Renaming any of them orphans live data or signs
 everyone out - leave them alone.
 
 ## Files
@@ -581,6 +582,33 @@ named the label and the long-term rule himself; keep the wording unless he chang
      `gs`: the tile counts money booked, not tax categories. An in-window sell row carrying
      neither field counts in `left` and is disclosed. Buys never carry them; rows outside
      the window cost nothing.
+- **The tile used to show two different figures depending on timing (fixed v96, 2026-09-23).**
+  The owner reported the long-term figure "fluctuating" between two values. Cause:
+  `mfRealisedWin` can only price a payout once that fund's full NAV history has come down
+  from mfapi, and that history lived only in memory for the session. One download was
+  measured at **60 s** (20 s for all nine funds in parallel on the live account). Until it
+  landed, every FY fund payout sat in `skipped`, so the tile showed shares + ledger only, and
+  the disclosure line wrongly said their cost "isn't in your records". Proven on the live
+  account on v95: cold vs warm differed by exactly the ten FY fund payouts, all of them
+  priced once warm (`skipped` 10 -> 0, `left` 10 -> 0). v95 also cached `[]` on a bad reply,
+  which left a fund unpriceable for the rest of the session. v96:
+  - NAV history is **kept on the device** in localStorage `nivesh_navh` (`{code:{at,h}}`,
+    trimmed to 40 days before the fund's first tx by `mfNavKeep()`). `mfNavAt[code]` is the
+    fetch day; `mfNavCovers(code,day)` is true only for `day <= at`, because past NAVs never
+    change but a later day may not be in the copy yet. `mfNavCached` returns null for an
+    uncovered day rather than silently using an older price.
+  - `mfNavFetch(code)` is the single downloader: deduplicates in-flight requests, never
+    caches an empty or failed reply (records `mfNavFail` instead). `mfWarmNavs()` downloads
+    in parallel and retries a minute later if any download failed.
+  - `mfFifo` returns `wait:true` when its replay broke only because a price is not
+    downloaded yet; `mfRealisedWin` counts those as `wait`, not `skipped`. `bookedFY().wait`
+    makes the tile show "…" on all three booked figures (headline, long, short) with a
+    "Fetching fund prices…" note, instead of a partial sum. **Do not bring back a partial
+    figure while waiting**: that partial figure is exactly what read as the tile jumping.
+  - The pricing maths is untouched. Tests (9, in the session scratchpad): cold is waiting
+    not left out, an empty reply is not cached, a failed download is not cached, the priced
+    figure after download, the device copy is kept, the next launch is correct with no
+    download, and a tx newer than the copy triggers exactly one fresh download.
 - **The long/short rule** (`heldLong` via `plusYear`): the sale must fall **strictly after**
   the first anniversary - selling ON the anniversary is short; 29 Feb rolls to 1 Mar. It is
   a holding-period split, not a tax computation (debt/hybrid thresholds differ and the app

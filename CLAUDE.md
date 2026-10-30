@@ -1261,7 +1261,7 @@ Ask the owner for current numbers; this is only so you know what exists:
      own address, so scrubbing it achieves nothing and would corrupt those URLs - the PIN is the
      real lock, and it was rotated 2026-09-17), the public `/exec` URLs, and what the CURRENT
      code still carries: `ESOP_SYM="ICICIBANK"` with its comment, and the `e.g. ankit` sign-in
-     placeholder. Moving those out is a code change and the owner's call.
+     placeholder. Offered 2026-10-30 and the owner said leave them - do not re-propose.
    - Residual: GitHub keeps orphaned commits reachable by their old ids until it garbage-collects
      them; the owner was given the text to ask GitHub Support to do that. 0 forks, so no
      fork-held copies exist. A paid GitHub plan (private repo serving Pages) was declined

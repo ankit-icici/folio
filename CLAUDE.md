@@ -1059,7 +1059,8 @@ export read it), `applyDoc()` (restore), `docSummary()` (the preview), `docLosse
 ## Sharing the code (owner asked 2026-10-30)
 
 The owner wanted a copy of the code to hand to others, with nothing of his in it. Built as a
-zip of `index.html`, `sw.js`, `manifest.webmanifest`, the icons, `relay/Code.gs` and
+zip of `index.html`, `sw.js`, `manifest.webmanifest`, every icon (incl. the two
+`icon-maskable-*` since v97; rebuilt 2026-11-13), `relay/Code.gs` and
 `README.md` - **never this file**, which carries details of his portfolio. Changes in the
 shared copy only, the live app untouched: `BACKEND` set to `PASTE_YOUR_WEB_APP_URL_HERE`
 (left as is, a recipient's data would land in the owner's Drive); the sign-in placeholder

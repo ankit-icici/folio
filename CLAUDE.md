@@ -28,7 +28,7 @@ anything — the operational gotchas below have all bitten before.
 
 | Thing | Where |
 |---|---|
-| App | https://ankit-icici.github.io/folio/ (GitHub Pages, `main` branch, root) |
+| App | https://ankit-icici.github.io/folio/ (GitHub Pages, published by the *Check and publish* workflow on every push to `main`) |
 | Repo | https://github.com/ankit-icici/folio (public — code only, **never** portfolio data) |
 | Backend | Google Apps Script web app on the owner's own Google account (ask the owner; not recorded here) |
 | Apps Script project | **"Folio backend (portfolio app)"** — `https://script.google.com/home/projects/1CpID_Y5jaqO31kbsUSqOEFVgaNPjilXJV1xxO15piummuwCAKSPB-njp/edit` |
@@ -105,7 +105,23 @@ everyone out - leave them alone.
   `BUILD` is shown at the bottom of the Account sheet — ask for it first when the user reports
   a shipped feature as missing; an installed PWA that is only resumed never re-fetches the page,
   which is exactly how one release went unseen.
-- `manifest.webmanifest`, `icon-*.png` — PWA install metadata
+- `manifest.webmanifest`, `icon-*.png` — PWA install metadata. **Each icon purpose has its own
+  file** (v97): `icon-192/512.png` are `any`, `icon-maskable-192/512.png` are `maskable` (same
+  artwork, dark background edge to edge, art inside the 80% safe circle). Until v96 one file was
+  listed as both `any` and `maskable`; on 2026-11-13 the owner's Pixel showed Folio as a small
+  square on a white circle - the look Android gives an installed app whose icon is not
+  maskable - most likely Chrome rebuilt the app from the plain entry (not proven: the maskable
+  artwork is unchanged, so the real change is one purpose per file address; other possible
+  causes are a plain shortcut instead of an installed app, or a stale installed copy). If it
+  recurs, check App info on the phone: an installed app shows its own storage. Never list one
+  file twice.
+- `tools/check_release.py` + `.github/workflows/pages.yml` — the release gate (v97). Every push
+  to `main` runs the check, and only a pass is published to Pages; a failure leaves the previous
+  build live and GitHub emails the owner. It tests the BUILD/CACHE pair, every pre-cached and
+  linked file, the manifest icons (sizes, one purpose per file, both purposes at 192 and 512,
+  maskable opaque with art in the safe circle, apple-touch-icon 180 opaque) and duplicate
+  function declarations. Run it locally before pushing: `python3 tools/check_release.py`.
+  When a new machine-testable rule appears in this file, add it to the check.
 
 ## Architecture
 
@@ -1058,14 +1074,24 @@ owner's name, employer and `AKfycb` before handing it over.
 # 1. edit index.html
 # 2. bump BOTH: CACHE in sw.js and BUILD in index.html (folio-vN -> folio-vN+1)
 git add -A && git commit -m "..." && git push
-# 3. Pages usually serves in 1-2 min, but has taken 30-40+ min; queued builds then flush
-#    together. Do not assume a failure - poll until BUILD flips, e.g.:
+# 3. the push runs the "Check and publish" workflow: check first, publish only on a pass.
+sleep 10; gh run watch -R ankit-icici/folio $(gh run list -R ankit-icici/folio --commit $(git rev-parse HEAD) --json databaseId -q '.[0].databaseId')
+#    then confirm the live BUILD flipped:
 until curl -s https://ankit-icici.github.io/folio/index.html | grep -q 'BUILD="vN"'; do sleep 30; done
-# (gh api repos/ankit-icici/folio/pages/builds/latest --jq .status shows building/built)
 ```
 
 An installed PWA only re-checks `sw.js` on launch/foreground/10 min, so after a release ask the
 user to foreground the app; `BUILD` at the foot of the Account sheet tells you what they are on.
+
+Pages source is **GitHub Actions** (switched 2026-11-13 from "deploy from branch", so the check
+can block a release). Docs-only pushes publish too; that is harmless. Commit as
+`ankit-icici <290023174+ankit-icici@users.noreply.github.com>`.
+
+**The home-screen icon is not updated by a release.** Android's installed app is a package Chrome
+builds from the manifest; Chrome re-checks it on its own schedule (days), and newer Chrome asks
+the user before changing an icon. When the icon must change now: long-press Folio -> App info ->
+Uninstall, then open the app link in Chrome -> menu (three dots) -> Install app. The portfolio is not
+touched (it lives in Drive); the phone may ask for the username and PIN again.
 
 ### Changing the backend
 

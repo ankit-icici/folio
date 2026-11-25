@@ -1097,7 +1097,14 @@ An installed PWA only re-checks `sw.js` on launch/foreground/10 min, so after a 
 user to foreground the app; `BUILD` at the foot of the Account sheet tells you what they are on.
 
 Pages source is **GitHub Actions** (switched 2026-11-13 from "deploy from branch", so the check
-can block a release). Docs-only pushes publish too; that is harmless. Commit as
+can block a release). Docs-only pushes publish too; that is harmless. Three jobs: check ->
+package (upload) -> publish (waits 20 s, then deploys). Upload and deploy were one job until
+2026-11-25: sometime after 11-13 a fresh upload began taking seconds to appear in the run's
+artifact list, so deploying straight after it failed with "No artifacts named github-pages".
+If publish fails: "Re-run failed jobs" (publish only) or a fresh run
+(`gh workflow run -R ankit-icici/folio pages.yml --ref main`); never "Re-run all jobs", which
+uploads a second artifact ("Multiple artifacts"). A failed publish leaves the previous build
+live, so the app is never broken by it. Commit as
 `ankit-icici <290023174+ankit-icici@users.noreply.github.com>`.
 
 **The home-screen icon is not updated by a release.** Android's installed app is a package Chrome

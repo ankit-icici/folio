@@ -27,17 +27,28 @@ jobs:
       - run: pip install pillow
       - run: python tools/check_release.py
 
-  publish:
+  package:
     needs: check
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: .
+
+  # A separate job, as in GitHub's own Pages template, plus a short wait: sometime between
+  # 2026-11-13 and 11-25 a fresh upload began taking seconds to appear in the run's artifact
+  # list, so deploying straight after it failed ("No artifacts named github-pages"). If publish
+  # fails: "Re-run failed jobs" (publish only) or a fresh run - never "Re-run all jobs", which
+  # uploads a second artifact ("Multiple artifacts").
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - run: sleep 20
       - id: deploy
         uses: actions/deploy-pages@v5

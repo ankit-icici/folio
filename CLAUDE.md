@@ -297,6 +297,18 @@ meta.esops = {
   strings, seeded from CMP by `eDraft()`. They are transient on purpose — a scenario must not
   outlive the session. `refreshEsopCalc()` updates the PAT cell and the open box **in place**;
   a full `render()` on every keystroke steals focus mid-typing.
+- **Dating an ESOP lot (learnt 2026-11-25).** Each lot's `fmv` is the perquisite price: the
+  average of NSE's open and close on the EXERCISE day (matched to the paisa on real lots), so a
+  price search finds the exercise date. But the capital-gains holding period runs from the
+  ALLOTMENT, i.e. the day the shares were credited to the demat, often a week or more later,
+  and that is what decides long vs short term. A price-only guess put one real lot two years too
+  early (a rounded `fmv` matched an old day). The credit dates are in ICICI Direct: Portfolio ->
+  Stocks -> the employer row's three-dot menu -> Transaction History; ESOP credits read
+  "OffMarket - In". That window is an editable tracker - read it, never press Save - so
+  reconcile its credits minus sales (FIFO) to the demat quantity before trusting it. Reach it
+  through the site's menus only: opening `ireports.icicidirect.com` or any page by address
+  signs the owner out. Store the credit date in the lot's Exercise date field and its sale tax
+  rate in the lot's own Tax on sale % (`cgr`); the app does not derive the rate from the date.
 
 ### Mutual funds (Funds tab)
 

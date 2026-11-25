@@ -274,7 +274,7 @@ meta.esops = {
   grants: { id: {year, qty, strike, sold} },   // strike is shown as "grant price"
   lots:   { id: {gid, qty, fmv, date?, perq?, cgr?} },  // exercised, sitting in the demat
   pool:   {qty?, fmv?, gpx?, perq?},           // dashboard overrides
-  cmp?, taxPerq, taxCg
+  cmp?, taxPerq, taxCg, taxLt   // taxCg = short-term sale rate, taxLt = long-term (v98)
 }
 ```
 
@@ -307,8 +307,33 @@ meta.esops = {
   "OffMarket - In". That window is an editable tracker - read it, never press Save - so
   reconcile its credits minus sales (FIFO) to the demat quantity before trusting it. Reach it
   through the site's menus only: opening `ireports.icicidirect.com` or any page by address
-  signs the owner out. Store the credit date in the lot's Exercise date field and its sale tax
-  rate in the lot's own Tax on sale % (`cgr`); the app does not derive the rate from the date.
+  signs the owner out. Store the credit date in the lot's date field (labelled "Reached your
+  demat on" since v98).
+- **Each lot's sale tax follows its date (v98, owner asked 2026-11-25).** `esopLotRate(l,E)` is
+  the one rule: a rate typed on the lot (`cgr`) wins; else `taxLt` (default 12.5) once
+  `heldLong(l.date, today())` - strictly after the first anniversary, the booked-P&L rule -
+  else `taxCg` (default 20), which also covers an undated lot. `esopLots()` uses it per row, and
+  `esopSummary()` totals the lots for the dashboard (see `esopSaleTax()` below), except when the pool's quantity or
+  average is overridden (then only the pool is known and the old single-rate formula at
+  `taxCg` stands). The dashboard total goes through `esopSaleTax()`, which sets losses off as
+  the tax rules do - a short-term loss against any gain, a long-term loss against long-term
+  gains only - while each row's own `tax` stays per lot (a losing lot shows 0). A lot with a
+  typed rate stands alone, taxed only when in profit. The lot sheet's rate box is now BLANK
+  unless a rate was typed (placeholder "auto · N%"), and saving it blank drops `cgr` - before
+  v98 the box was prefilled with `taxCg`, so merely saving a lot pinned it to 20% for ever.
+  The owner's live lots were checked on 2026-11-25 and carry no `cgr`, so all of them switch.
+  **Existing lots can now be opened (v98):** before, nothing called `esopLotSheet(id)` - a
+  lot's date and rate could only be set when it was first recorded. Each grant's sheet (tap a
+  grant on the ESOP tab) now lists its exercised lots (`esopGrantLots`) with date, shares and
+  the rate in force; tapping one opens its sheet. `cgr` is tested with
+  `parseFloat`, not `+`, because `+""` is 0 and would read as a 0% rate. The "Value after tax"
+  tile says "tax N% on gain" or "tax 12.5% / 20% by lot"; its sheet edits both rates. The
+  ₹1.25 lakh yearly long-term exemption is NOT modelled (it is shared with every other
+  equity gain that year, which the ESOP tab cannot know). Proven by node assertions on the
+  extracted functions (anniversary day short, day after long, undated short, override wins,
+  blank = auto, custom long rate, pool-override path, loss lot, equality with the old
+  single-rate result when every lot is short AND in profit, the no-lots tile note, the three
+  set-off cases, a legacy `cgr:20` staying fixed, and equal short/long rates) - 20 in all.
 
 ### Mutual funds (Funds tab)
 

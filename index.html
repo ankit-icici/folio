@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v97";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v98";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -1251,14 +1251,22 @@ function planHTML(core){
    spread over the strike. Sold lots are simply deleted - this section tracks
    what is still held and what is still to vest. */
 const VEST=[0.30,0.30,0.40];
-const esopDefaults={taxPerq:34,taxCg:20};   /* editable; per-lot overrides win */
+const esopDefaults={taxPerq:34,taxCg:20,taxLt:12.5};   /* taxCg = short-term, taxLt = long-term; editable; per-lot overrides win */
 let esopOpen=null;                       /* the row whose calculator is showing */
 let eD={};                               /* transient what-if inputs, keyed by row */
 function esops(){
   const e=meta.esops||{};
   return {grants:e.grants||{},lots:e.lots||{},pool:e.pool||{},cmp:e.cmp,
     taxPerq:isFinite(e.taxPerq)?e.taxPerq:esopDefaults.taxPerq,
-    taxCg:isFinite(e.taxCg)?e.taxCg:(isFinite(e.taxSt)?e.taxSt:esopDefaults.taxCg)};
+    taxCg:isFinite(e.taxCg)?e.taxCg:(isFinite(e.taxSt)?e.taxSt:esopDefaults.taxCg),
+    taxLt:isFinite(e.taxLt)?e.taxLt:esopDefaults.taxLt};
+}
+/* the sale tax on one exercised lot today: a rate typed on the lot wins; otherwise the
+   long-term rate once it has been held more than a year from the day it reached the demat
+   (the same rule as booked P&L), the short-term rate before that or when no date is known */
+function esopLotRate(l,E){
+  if(isFinite(parseFloat(l.cgr))&&+l.cgr>=0) return +l.cgr;
+  return heldLong(l.date,today())?E.taxLt:E.taxCg;
 }
 function esopWrite(fn){
   if(!meta.esops) meta.esops={grants:{},lots:{},...esopDefaults};
@@ -1288,7 +1296,11 @@ function esopPool(){
 function esopSummary(){
   const E=esops(), P=esopPool(), cmp=esopPx();
   const value=P.qty*cmp;
-  const cgTax=Math.max(0,P.qty*(cmp-P.fmv))*E.taxCg/100;
+  /* lot by lot, each at its own rate - unless the quantity or average was overridden on the
+     dashboard, when only the pool is known and the short-term rate applies to all of it */
+  const pool=E.pool||{}, byLot=!isFinite(+pool.qty)&&!isFinite(+pool.fmv);
+  const cgTax=byLot?esopSaleTax(esopLots(),E)
+                   :Math.max(0,P.qty*(cmp-P.fmv))*E.taxCg/100;
   const grantCost=P.qty*P.gpx;
   const perqTax=P.perq;
   const spread=Math.max(0,P.qty*(P.fmv-P.gpx));
@@ -1326,12 +1338,33 @@ function esopLots(){
     const perq=isFinite(+l.perq)&&+l.perq>=0?+l.perq:Math.max(0,qty*(fmv-strike))*E.taxPerq/100;
     const cash=qty*strike+perq;                 /* what it actually cost you */
     const value=qty*px, gain=value-qty*fmv;
-    const rate=isFinite(+l.cgr)&&+l.cgr>=0?+l.cgr:E.taxCg;
+    const rate=esopLotRate(l,E);
     const tax=gain>0?gain*rate/100:0;
     out.push({id,gid:l.gid,year:+g.year||0,qty,fmv,strike,date:l.date||"",
       perq,cash,value,gain,tax,net:value-tax,rate});
   }
   return out.sort((a,b)=>a.year-b.year||b.qty-a.qty);
+}
+/* tax if every lot were sold today, with losses set off the way the tax rules allow: a
+   short-term loss against any gain, a long-term loss against long-term gains only. Lots with a
+   rate typed on them stand alone (their category is unknown), taxed only when in profit. */
+function esopSaleTax(rows,E){
+  let st=0,lt=0,own=0;
+  for(const r of rows){
+    const l=E.lots[r.id]||{};
+    if(isFinite(parseFloat(l.cgr))&&+l.cgr>=0) own+=r.tax;
+    else if(heldLong(l.date,today())) lt+=r.gain;
+    else st+=r.gain;
+  }
+  if(st<0){ lt+=st; st=0; }
+  return st*E.taxCg/100+Math.max(0,lt)*E.taxLt/100+own;
+}
+/* the tile's one-line tax note: the single rate in force, or that it differs lot by lot */
+function esopRateNote(E){
+  const P=E.pool||{};
+  if(isFinite(+P.qty)||isFinite(+P.fmv)) return "tax "+E.taxCg+"% on gain";
+  const rs=[...new Set(esopLots().map(r=>r.rate))];
+  return rs.length<=1?"tax "+(rs.length?rs[0]:E.taxCg)+"% on gain":"tax "+rs.sort((a,b)=>a-b).join("% / ")+"% by lot";
 }
 /* what is still to vest, by calendar year */
 /* vested, minus what is exercised and what was sold before the app existed */
@@ -1389,7 +1422,7 @@ function esopHTML(){
   const card='<div class="ecard"><div class="egrid">'+
     tile("cmp","CMP",price(S.cmp),manual?"set by you · tap to edit":spct(dayPct)+" today")+
     tile("qty","Shares held",qfmt(S.qty),"exercised")+
-    tile("cg","Value after tax",rupee(S.net),"tax "+E.taxCg+"% on gain")+
+    tile("cg","Value after tax",rupee(S.net),esopRateNote(E))+
     tile("pq","Profit after tax",sgn(S.pat)+rupee(S.pat),
       "perquisite "+S.perqRate.toFixed(1)+"%",cls(S.pat))+
     '</div></div>';
@@ -1521,17 +1554,15 @@ function esopEditSheet(which){
   }
   if(which==="cg"){
     openSheet("Tax on the gain",
-      '<div class="f"><label>LTCG / STCG rate</label>'+
+      '<div class="f2"><div class="f"><label>Held up to a year</label>'+
         '<input id="xR" class="mono" inputmode="decimal" value="'+E.taxCg+'"></div>'+
-        pick("r",[12.5,20],E.taxCg)+
-      '<p class="hint" style="margin-top:8px">Charged on the rise since you exercised — 12.5% once a year has passed, 20% before that.</p>'+
+      '<div class="f"><label>Held over a year</label>'+
+        '<input id="xL" class="mono" inputmode="decimal" value="'+E.taxLt+'"></div></div>'+
+      '<p class="hint" style="margin-top:8px">Charged on the rise since you exercised. Each lot moves to the over-a-year rate by itself, counted from the day its shares reached your demat. A rate typed on a lot overrides both.</p>'+
       '<button class="primary" id="xGo">Save</button>');
-    document.querySelectorAll("[data-pk]").forEach(b=>b.addEventListener("click",()=>{
-      $("#xR").value=b.dataset.v;
-      document.querySelectorAll("[data-pk]").forEach(x=>x.setAttribute("aria-pressed",x===b));}));
     $("#xGo").addEventListener("click",()=>{
-      const v=parseFloat($("#xR").value);
-      esopWrite(E2=>{ if(v>=0) E2.taxCg=v; }); closeSheet(); setTab("esop");});
+      const v=parseFloat($("#xR").value), w=parseFloat($("#xL").value);
+      esopWrite(E2=>{ if(v>=0) E2.taxCg=v; if(w>=0) E2.taxLt=w; }); closeSheet(); setTab("esop");});
     return;
   }
   const S=esopSummary();
@@ -1567,7 +1598,7 @@ function esopGrantSheet(id){
     '<div class="f"><label>Grant price per share</label><input id="gS" class="mono" inputmode="decimal" value="'+(g?g.strike:"")+'"></div>'+
     '<div class="err" id="gErr"></div>'+
     '<button class="primary" id="gGo">'+(g?"Save":"Add")+'</button>'+
-    (g?'<div id="gVest"></div>'+
+    (g?'<div id="gVest"></div>'+esopGrantLots(id)+
        '<button class="ghost" id="gEx" style="margin-top:12px">Record an exercise</button>'+
        '<p class="hint" style="margin-top:6px">Use this when a vested tranche is exercised and the shares land in your demat.</p>'+
        '<button class="ghost" id="gDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Delete grant</button>':
@@ -1588,6 +1619,8 @@ function esopGrantSheet(id){
     closeSheet(); setTab("esop"); pollQuotes();
   });
   const ex=$("#gEx"); if(ex) ex.addEventListener("click",()=>{closeSheet(); esopLotSheet(null,id);});
+  document.querySelectorAll("[data-glot]").forEach(b=>b.addEventListener("click",()=>{
+    const k=b.dataset.glot; closeSheet(); esopLotSheet(k);}));
   const del=$("#gDel");
   if(del) del.addEventListener("click",e=>{
     const b=e.currentTarget;
@@ -1595,6 +1628,16 @@ function esopGrantSheet(id){
     esopWrite(E2=>{ for(const k of Object.keys(E2.lots)) if(E2.lots[k].gid===id) delete E2.lots[k]; delete E2.grants[id]; });
     closeSheet(); setTab("esop");
   });
+}
+/* a grant's exercised lots, each opening its own sheet - the one door to a lot's date and rate */
+function esopGrantLots(gid){
+  const rows=esopLots().filter(r=>r.gid===gid);
+  if(!rows.length) return "";
+  return '<div class="secthead">Exercised · in your demat</div>'+rows.map(r=>{
+    const d=new Date(r.date+"T00:00:00");
+    const dl=r.date&&!isNaN(d)?d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}):"date not set";
+    return '<button class="gvr" style="width:100%" data-glot="'+r.id+'"><span>'+dl+'</span>'+
+      '<span class="mono">'+qfmt(r.qty)+' shares · '+r.rate+'% ›</span></button>';}).join("");
 }
 function esopLotSheet(id,gid){
   if(guestGuard()) return;
@@ -1610,8 +1653,9 @@ function esopLotSheet(id,gid){
     '<div class="f"><label>Grant</label><select id="lG">'+opts+'</select></div>'+
     '<div class="f2"><div class="f"><label>Shares</label><input id="lQ" class="mono" inputmode="numeric" value="'+(l?l.qty:"")+'" placeholder="'+(free||"")+'"></div>'+
     '<div class="f"><label>Price on exercise day</label><input id="lP" class="mono" inputmode="decimal" value="'+(l?l.fmv:"")+'"></div></div>'+
-    '<div class="f2"><div class="f"><label>Exercise date</label><input id="lD" type="date" value="'+(l&&l.date?l.date:"")+'"></div>'+
-    '<div class="f"><label>Tax on sale %</label><input id="lR" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.cgr)?l.cgr:E.taxCg)+'"></div></div>'+
+    '<div class="f2"><div class="f"><label>Reached your demat on</label><input id="lD" type="date" value="'+(l&&l.date?l.date:"")+'"></div>'+
+    '<div class="f"><label>Tax on sale %</label><input id="lR" class="mono" inputmode="decimal" value="'+(l&&isFinite(parseFloat(l.cgr))?l.cgr:"")+'" placeholder="auto · '+(l?esopLotRate({date:l.date},E):E.taxCg)+'%"></div></div>'+
+    '<p class="hint" style="margin-top:6px">Leave the tax blank and it moves from '+E.taxCg+'% to '+E.taxLt+'% by itself once the shares have been in your demat for more than a year. A rate typed here stays fixed.</p>'+
     '<div class="f"><label>Perquisite tax paid</label><input id="lT" class="mono" inputmode="decimal" value="'+(l&&isFinite(+l.perq)?l.perq:"")+'" placeholder="auto at '+E.taxPerq+'%"></div>'+
     '<p class="hint" style="margin-top:6px">Leave the perquisite tax blank and it is worked out at '+E.taxPerq+'% of the spread over the strike.</p>'+
     '<div class="err" id="lErr"></div>'+
@@ -1619,7 +1663,7 @@ function esopLotSheet(id,gid){
     (l?'<button class="ghost" id="lDel" style="margin-top:14px;color:var(--loss);border-color:var(--loss)">Sold — remove this lot</button>':""));
   $("#lGo").addEventListener("click",()=>{
     const k2=$("#lG").value, q=parseFloat($("#lQ").value), fp=parseFloat($("#lP").value), d=$("#lD").value||"";
-    const pt=parseFloat($("#lT").value), cr=parseFloat($("#lR").value);
+    const pt=parseFloat($("#lT").value), cr=parseFloat($("#lR").value);   /* blank rate = automatic */
     if(!k2||!(q>0)||!(fp>0)) return showErr("#lErr","Grant, shares and the exercise-day price are required.");
     esopWrite(E2=>{ const k=id||uid();
       E2.lots[k]={gid:k2,qty:q,fmv:fp,date:d,

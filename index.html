@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v98";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v99";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -512,7 +512,8 @@ function liveDoc(){
   return {stocks,txns,
     ...(meta.history?{history:meta.history}:{}),
     ...(meta.esops?{esops:meta.esops}:{}),
-    ...(meta.mf?{mf:meta.mf}:{})};
+    ...(meta.mf?{mf:meta.mf}:{}),
+    ...(meta.watch?{watch:meta.watch}:{})};
 }
 async function saveNow(force){
   if(isGuest()||Date.now()<backoffUntil){ pendingSave=false; return; }
@@ -564,7 +565,8 @@ async function loadRemote(){
     if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
       if(j.data.history) meta.history=j.data.history;
       if(j.data.esops) meta.esops=j.data.esops;
-      if(j.data.mf) meta.mf=j.data.mf; }
+      if(j.data.mf) meta.mf=j.data.mf;
+      if(j.data.watch) meta.watch=j.data.watch; }
     if(j.quotes&&Object.keys(j.quotes).length){        /* relay bundled prices in - no 2nd trip */
       lastQuotes=j.quotes;
       for(const i of INDICES) if(j.quotes[i.s]) idx[i.s]=j.quotes[i.s];
@@ -911,6 +913,7 @@ function shellHTML(){
     '<header><div class="wordmark">Folio<span>.</span></div>'+
     '<div class="hr"><button class="tbtn" id="eyeBtn" aria-label="Hide values"></button>'+
     '<button class="tbtn" id="searchBtn" aria-label="Search stocks">⌕</button>'+
+    '<button class="tbtn" id="watchBtn" aria-label="Watchlist">☆</button>'+
     '<button class="tbtn" id="themeBtn" aria-label="Theme">◐</button>'+
     '<button class="tbtn" id="cfgBtn" aria-label="Account">⚙</button></div></header>'+
     '<div class="status" id="status"></div>'+
@@ -3356,6 +3359,128 @@ function bindResultTaps(){
   });
 }
 
+/* ---------- watchlist ----------
+   Stocks and funds you follow without holding them. meta.watch = {id:{k:"s",s,n,at} |
+   {k:"f",code,n,at}}; it travels in the document as a top-level `watch` section. Prices
+   are looked up when the sheet opens: stocks through the relay's quotes, funds from mfapi
+   (the last two NAVs, so a fund shows its latest day's move too). Nothing here touches a
+   total, a return or the Plan. */
+let watchTimer=null, watchSeq=0, watchKind="s";
+const watchList=()=>Object.entries(meta.watch||{}).sort((a,b)=>String(a[1].n).localeCompare(String(b[1].n)));
+function watchRowsHTML(){
+  const L=watchList();
+  if(!L.length) return '<p class="hint">Nothing here yet. Look up a stock or a fund below to start following it.</p>';
+  return L.map(([id,w])=>{
+    const ex=w.k==="s"?symExch(w.s):"";
+    return '<div class="fr" data-wid="'+esc(id)+'"><div class="fl">'+
+      /* fund names run long and their tail (Direct/Regular, Growth/IDCW) is what tells two apart,
+         so they wrap to two lines instead of being cut */
+      '<div class="fn"><span class="nw"'+(w.k==="f"?' style="white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical"':'')+'>'+esc(w.n)+'</span>'+
+      (w.k==="f"?'<span class="tag b">FUND</span>':(ex?'<span class="tag b">'+ex+'</span>':''))+'</div>'+
+      '<div class="fs mono" data-wsub>'+(w.k==="f"?"NAV":esc(symRoot(w.s)))+'</div></div>'+
+      '<div class="fa mono" data-wpx><span style="color:var(--faint)">…</span></div>'+
+      '<button class="rmx" data-wrm="'+esc(id)+'" aria-label="Remove '+esc(w.n)+' from the watchlist">×</button></div>';
+  }).join("");
+}
+function watchCell(id,p,ch,sub){
+  const row=document.querySelector('[data-wid="'+id+'"]'); if(!row) return;
+  const cell=row.querySelector("[data-wpx]");
+  if(!(p>0)){ cell.innerHTML='<span style="color:var(--faint)">—</span>'; return; }
+  cell.innerHTML=price(p)+'<div class="fs mono '+cls(ch)+'" style="text-align:right">'+spct(ch)+'</div>';
+  if(sub) row.querySelector("[data-wsub]").textContent=sub;
+}
+async function watchPrices(){
+  const L=watchList(), stockRows=L.filter(([,w])=>w.k==="s"), funds=L.filter(([,w])=>w.k==="f");
+  if(stockRows.length){
+    try{
+      const j=await fetch(api("action=quotes&symbols="+[...new Set(stockRows.map(([,w])=>w.s))].map(encodeURIComponent).join(","))).then(r=>r.json());
+      for(const [id,w] of stockRows){ const v=(j.quotes||{})[w.s];
+        watchCell(id,v&&v.p,v&&v.pc>0?(v.p-v.pc)/v.pc*100:NaN); }
+    }catch(e){ for(const [id] of stockRows) watchCell(id,0); }
+  }
+  /* a fortnight of NAVs is enough to hold the last two published days, holidays included */
+  const from=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+  await Promise.all(funds.map(async([id,w])=>{
+    try{
+      const j=await fetch("https://api.mfapi.in/mf/"+w.code+"?startDate="+from+"&endDate="+today()).then(r=>r.json());
+      const rows=(j&&j.data)||[], a=parseFloat((rows[0]||{}).nav), b=parseFloat((rows[1]||{}).nav);
+      const d=rows[0]?rows[0].date.split("-"):null;
+      const when=d?new Date(d[2]+"-"+d[1]+"-"+d[0]+"T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"}):"";
+      watchCell(id,a,b>0?(a-b)/b*100:NaN,"NAV"+(when?" · "+when:""));
+    }catch(e){ watchCell(id,0); }
+  }));
+}
+function watchDraw(){ const el=$("#wList"); if(!el) return; el.innerHTML=watchRowsHTML(); watchPrices(); }
+function watchAdd(item){
+  if(guestGuard()) return;
+  const dup=watchList().some(([,w])=>w.k===item.k&&(item.k==="s"?w.s===item.s:+w.code===+item.code));
+  if(dup){ showErr("#wErr",item.n+" is already on your watchlist."); return; }
+  if(!meta.watch) meta.watch={};
+  meta.watch[uid()]={...item,at:today()};
+  saveRemote();
+  $("#wIn").value=""; $("#wSug").innerHTML=""; $("#wErr").style.display="none";
+  watchDraw();
+}
+function watchSheet(){
+  openSheet("Watchlist",
+    '<div id="wList">'+watchRowsHTML()+'</div>'+
+    '<div class="secthead" style="margin-top:18px">Add to the watchlist</div>'+
+    '<div class="togg full" id="wKind"><button aria-pressed="'+(watchKind==="s")+'" data-v="s">Stock</button>'+
+      '<button aria-pressed="'+(watchKind==="f")+'" data-v="f">Mutual fund</button></div>'+
+    '<div class="f"><input id="wIn" autocomplete="off" autocapitalize="none"></div>'+
+    '<div class="err" id="wErr"></div><div id="wSug"></div>');
+  const inp=$("#wIn");
+  const hintFor=()=>{ inp.placeholder=watchKind==="s"?"Company or symbol, e.g. Infosys":"Fund name, e.g. Nifty 50 index"; };
+  hintFor(); watchPrices();
+  $("#wKind").addEventListener("click",e=>{
+    const b=e.target.closest("[data-v]"); if(!b) return;
+    watchKind=b.dataset.v; clearTimeout(watchTimer); watchSeq++;
+    $("#wKind").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+    hintFor(); inp.value=""; $("#wSug").innerHTML=""; inp.focus();
+  });
+  $("#wList").addEventListener("click",e=>{
+    const x=e.target.closest("[data-wrm]"); if(!x) return;
+    if(guestGuard()) return;
+    if(x.dataset.armed!=="1"){              /* first tap asks, second removes */
+      x.dataset.armed="1"; x.style.color="var(--loss)"; x.style.borderColor="var(--loss)";
+      const sub=x.closest("[data-wid]").querySelector("[data-wsub]"), was=sub.textContent;
+      sub.textContent="Tap × again to remove";
+      setTimeout(()=>{ if(x.isConnected&&x.dataset.armed==="1"){ x.dataset.armed=""; x.style.color=""; x.style.borderColor=""; sub.textContent=was; } },3000);
+      return;
+    }
+    delete meta.watch[x.dataset.wrm];
+    $("#wErr").style.display="none";
+    saveRemote(); watchDraw();
+  });
+  inp.addEventListener("input",()=>{
+    const q=inp.value.trim(), kind=watchKind;
+    clearTimeout(watchTimer); watchSeq++; $("#wErr").style.display="none";
+    if(q.length<(kind==="s"?2:3)){ $("#wSug").innerHTML=""; return; }
+    $("#wSug").innerHTML='<p class="hint">Looking up…</p>';
+    watchTimer=setTimeout(async()=>{
+      const mine=++watchSeq;
+      try{
+        let list;
+        if(kind==="s"){
+          const j=await fetch(api("action=search&q="+encodeURIComponent(q))).then(r=>r.json());
+          list=(j.results||[]).slice(0,6).map(r=>({k:"s",s:r.s,n:r.n}));
+        }else{
+          const j=await fetch("https://api.mfapi.in/mf/search?q="+encodeURIComponent(q)).then(r=>r.json());
+          list=(j||[]).slice(0,6).map(r=>({k:"f",code:r.schemeCode,n:r.schemeName}));
+        }
+        const box=$("#wSug"); if(mine!==watchSeq||!box) return;
+        box.innerHTML=list.length?'<div class="sug">'+list.map((r,i)=>
+          '<button class="sugr" data-wadd="'+i+'"><span class="nw">'+esc(r.n)+'</span>'+
+          (r.k==="s"?symHTML(r.s):"")+'</button>').join("")+'</div>'
+          :'<p class="hint">Nothing found for “'+esc(q)+'”.</p>';
+        box.querySelectorAll("[data-wadd]").forEach(b=>b.addEventListener("click",()=>watchAdd(list[+b.dataset.wadd])));
+      }catch(e){
+        const box=$("#wSug"); if(mine===watchSeq&&box) box.innerHTML='<p class="hint">Couldn’t reach the '+(kind==="s"?"market feed":"fund price service")+'. Try again.</p>';
+      }
+    },350);
+  });
+}
+
 /* add stock */
 let addTimer=null, addSeq=0;
 function addWhatSheet(){          /* Home holds both kinds, so ask which one */
@@ -3649,12 +3774,14 @@ function applyDoc(d){
   if(d.history) meta.history=d.history; else delete meta.history;
   if(d.esops) meta.esops=d.esops; else delete meta.esops;
   if(d.mf) meta.mf=d.mf; else delete meta.mf;
+  if(d.watch) meta.watch=d.watch; else delete meta.watch;
 }
 const nOf=(o,a,b)=>{let c=o&&o[a]; if(b) c=c&&c[b]; return c?Object.keys(c).length:0;};
 function docSummary(d){
   return nOf(d,"stocks")+" stocks · "+nOf(d,"txns")+" transactions · "+
          nOf(d,"mf","funds")+" funds · "+nOf(d,"mf","txs")+" fund transactions · "+
          nOf(d,"esops","grants")+" ESOP grants"+(d.history?" · imported history":"")+
+         (nOf(d,"watch")?" · "+nOf(d,"watch")+" on the watchlist":"")+
          (d.savedAt?"<br>saved "+esc(String(d.savedAt).slice(0,16).replace("T"," "))+" UTC":"");
 }
 /* A copy taken before a section existed (or by an older build) will remove that
@@ -3665,7 +3792,8 @@ function docLosses(d){
   const S=[["stocks",["stocks"],"stocks"],["txns",["txns"],"transactions"],
            ["funds",["mf","funds"],"funds"],["fund transactions",["mf","txs"],"fund transactions"],
            ["SIPs",["mf","sips"],"SIPs"],["SWPs",["mf","swps"],"SWPs"],
-           ["ESOP grants",["esops","grants"],"ESOP grants"],["ESOP lots",["esops","lots"],"ESOP lots"]];
+           ["ESOP grants",["esops","grants"],"ESOP grants"],["ESOP lots",["esops","lots"],"ESOP lots"],
+           ["watchlist",["watch"],"watchlist entries"]];
   for(const [,path,label] of S){
     const a=nOf(now,path[0],path[1]), b=nOf(d,path[0],path[1]);
     if(a>0&&b===0) out.push("all "+a+" "+label);
@@ -3862,6 +3990,7 @@ function mountShell(){
   setMask(maskOn());
   $("#cfgBtn").addEventListener("click",cfgSheet);
   $("#searchBtn").addEventListener("click",searchSheet);
+  $("#watchBtn").addEventListener("click",watchSheet);
   const fb=$("#fab");
   if(fb) fb.addEventListener("click",()=>{
     if(guestGuard()) return;
@@ -3900,7 +4029,8 @@ function mountSetup(mode){
       if(j.data){ stocks=j.data.stocks||{}; txns=j.data.txns||{};
         if(j.data.history) meta.history=j.data.history;
         if(j.data.esops) meta.esops=j.data.esops;
-        if(j.data.mf) meta.mf=j.data.mf; } else { stocks={}; txns={}; }
+        if(j.data.mf) meta.mf=j.data.mf;
+        if(j.data.watch) meta.watch=j.data.watch; } else { stocks={}; txns={}; }
       ready=true; live=true; cacheLocal();
       mountShell(); render(); pollQuotes();
     }catch(e){ $("#cGo").disabled=false; showErr("#cErr",e.message); }

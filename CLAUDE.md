@@ -979,6 +979,42 @@ lots. Both give the same TOTAL cost - that is why the bonus-issue holding reconc
 over them can report a different profit on a PARTIAL sale than the broker's statement does.
 Total correct, per-sale possibly not. Raise it with the owner before "fixing" either side.
 
+### Watchlist (v99, owner asked 2026-11-27)
+
+A ☆ button beside search in the header opens `watchSheet()`: stocks and funds the owner follows
+without holding them, each with its price and today's move, a × to remove, and a Stock / Mutual
+fund toggle over one search box to add (stocks via the relay's `action=search`, funds via mfapi
+search). The owner chose the header spot and "nothing more" per row (no change-since-added, no
+target price, no 52-week range - the last would need a relay change).
+- Data: `meta.watch = {id:{k:"s",s,n,at} | {k:"f",code,n,at}}`, a top-level `watch` section in
+  the document. It went through the seven-place list above: `liveDoc`, both load paths
+  (`loadRemote` and the sign-in handler), `applyDoc`, `docSummary`, `docLosses`; `cacheLocal`
+  is automatic (it stores `meta`). `isFolioDoc` is unchanged on purpose (a watchlist alone is
+  not a portfolio). The relay stores the whole document as sent, so no backend change was
+  needed - and the relay's `shrunk_` guard deliberately does NOT cover `watch`: removing the
+  last entry is a legitimate empty save, and the guard would refuse it.
+- **Known exposure:** a device still running v98 or older does not know `watch`, so a save from
+  it drops the section. Builds self-update within seconds of launch/foreground, so the window is
+  small; if the owner ever reports a vanished watchlist, that is the first suspect. Partly
+  self-healing: `loadRemote` only replaces `meta.watch` when the server copy has one, so a v99
+  device that still holds the list writes it back on its next save.
+- Removing asks for a second tap (the × turns red and the row says "Tap × again to remove";
+  it disarms after 3 s) - the owner's rule that deletes confirm. Toggling Stock/Mutual fund
+  cancels any pending lookup; a lookup whose sheet was replaced exits quietly; an unknown
+  previous price shows "—", not 0.0%; symbols are URL-encoded (M&M).
+- Prices are fetched when the sheet opens and after each add, not polled: stocks through
+  `action=quotes` (relay, 45 s server cache), funds from
+  `api.mfapi.in/mf/<code>?startDate=<14 days ago>&endDate=<today>` - the newest two rows give the
+  NAV, its date and the day's move. Nothing reads `meta.watch` for any total, return or Plan.
+- Fund names wrap to two lines (line-clamp) because their tail (Direct/Regular, Growth/IDCW)
+  is what tells two schemes apart. Duplicates (same symbol or scheme code) are refused with a
+  message. Add and remove go through `guestGuard()`; the advisor sees the list read-only.
+- Wording: "Stock", never "Share" - the owner asked for the app's own word everywhere
+  (2026-11-27).
+- Tested in a sandbox (local copy, backend stubbed, real mfapi) at 375 px: header fits with five
+  buttons, add stock, add fund, duplicate refused, remove, the save carries `watch`, restore
+  preview counts it, and a restore from a copy without it is flagged in the losses list.
+
 ## Data durability (do not weaken)
 
 **Relay v15 write guard covers the WHOLE document**, not just stocks/txns: `shrunk_(old,inc)`

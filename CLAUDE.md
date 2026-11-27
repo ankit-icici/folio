@@ -1035,10 +1035,12 @@ happily written the funds away.
 4. ⚙ Account → *Go back to an earlier version* browses and restores any snapshot in-app;
    *Save a copy to this device* writes the whole document (`liveDoc()`) as a file. Both restore
    routes preview the copy's contents and name what restoring it would **remove** first.
-   A **permanent banner** (v76, was a timed nudge in v75) sits under `#status` carrying the
-   last-save stamp, with one tap to save. That device copy is the only one that does not live in
-   the same Google account as the data file, the snapshots and the monthly email, which is why
-   the app states its age rather than leaving it to memory.
+   **The banner is OFF since v100 (2026-11-27)**, replaced by the daily backup email to the
+   second account below (`BK_BAR=false` in `bkShow()`; flip it to bring the bar back). The notes on it
+   that follow describe how it works when on. It was a **permanent banner** (v76, a timed nudge
+   in v75) under `#status` carrying the last-save stamp, with one tap to save. Until v100 that device copy was the only one outside the
+   Google account holding the data file, the snapshots and the monthly email; since 2026-11-27
+   the daily backup email to a second account (below) is the automatic one.
    - `bkShow()` decides whether it appears at all - **not** whether a save is owing. It is always
      on screen except for guests, an empty portfolio, and before the first load.
    - `bkOverdue()` only decides its **tone**: quiet (`--surface`/`--muted`) when the copy is
@@ -1060,6 +1062,42 @@ happily written the funds away.
    strike, so one stale device cannot lock the owner out (see the lockout gotcha).
 6. The monthly email below puts a copy in a second Google *service*. It is not outside the
    account - see the correction under *Monthly off-Drive backup*.
+7. **The daily backup email to a second Google account (2026-11-27) IS outside the account** -
+   see *Daily backup email to a second account*.
+
+### Daily backup email to a second account (2026-11-27)
+
+`dailyBackup` / `setupDailyBackup` in the relay (project HEAD only - triggers run head, the web
+app never calls it, so no new deployment or /exec URL). About 5 pm IST every day, changed or
+not, the whole account file is emailed as `Folio-daily-YYYY-MM-DD-HHmm.json` to the address in
+the script property `daily_to` - an address on a DIFFERENT Google account, so the copies belong
+to that account and survive losing the Folio one. Subject: `Folio backup · 27 Nov 2026, 5:00 PM`
+(the owner asked for the date and time in it). The JSON is parsed and checked for stocks or
+funds before sending; a missing address, missing file or unreadable data sends a
+`Folio backup PROBLEM · …` email (to `daily_to`, cc the Folio account) instead of nothing.
+- **Live since 2026-11-27, 11:22 IST:** set up from the editor (`daily_to` set by a one-off
+  function that was then removed, so no address sits in the live code either); the first email
+  arrived in the other account's INBOX (not spam) with the attachment and counts matching the
+  live document. Triggers page shows exactly one `dailyBackup` and one `monthlyBackup`. The
+  first scheduled 5 pm run is still to be seen - check for it the next day.
+- **How it was decided:** the owner first asked for this email, then for a Drive folder keeping
+  the last 10 files (older ones to "To be deleted") in his other account. A Drive folder needs
+  a second script in the other account, because a file the Folio script creates is owned by
+  the Folio account wherever it sits. That was built and reviewed, then dropped before going
+  live on his question "is email the more risk-free option... I may not have Claude tomorrow":
+  email has one moving part and nothing to clean up, and every day's copy simply stays in the
+  inbox. Do not rebuild the Drive version unless he asks.
+- **Known gap, told to the owner:** if the Folio account itself is lost, the emails just stop
+  (nothing is left to send a warning); that is exactly when the copies already in the other
+  inbox are used. A missed day shows as a gap in the dated subjects.
+- The address is in script properties and the owner's private notes, never in this public repo.
+  If that inbox is full, Gmail rejects the mail and the bounce lands in the Folio account's
+  inbox; a MailApp error reaches only Google's failure notice there too. Tell the owner to mark
+  the first email "Not spam" if it lands there (spam is auto-deleted after 30 days).
+  About 100 KB a day, about 35 MB a year, against Gmail's free 15 GB - remind the owner that
+  the other account's storage is shared with its Drive (it was about two-thirds full on
+  2026-11-27), and to sign into that account now and then: Google may delete a personal
+  account after about two years with no sign-in.
 
 ### Monthly off-Drive backup
 
@@ -1074,9 +1112,8 @@ because the live file, the daily snapshots and the monthly archive all sit in on
 **Be accurate about how far it goes:** `MailApp.sendEmail` addresses
 `Session.getEffectiveUser().getEmail()` - the script owner - so the attachment lands in the *same*
 account's Gmail. It survives a bad restore, a deleted Drive folder or a wiped data file; it does
-**not** survive losing the account. The only copy that does is the device file, which is why v75-v77
-put a permanent banner on it. Forwarding the monthly mail to a non-Google address would close the
-gap; that is a standing mail rule and the owner's call, so ask, do not add one.
+**not** survive losing the account. Since 2026-11-27 the copy that does is the **daily backup email to a second
+account** (below), which replaced the device-copy banner of v75-v99.
 
 **Head vs deployed (historical - the split is now CLOSED):** the backup functions live in the
 project **head**, and time-driven triggers run head. The web app used to serve a *pinned* version,
@@ -1112,7 +1149,8 @@ anyway: the rename is the one moment every stored artefact for the account moves
 
 Device export: `Folio-backup-YYYY-MM-DD-HHMM.json` (capital F so it is findable by eye in a
 phone's Files app, ISO date so copies sort chronologically, clock time so two saves in one day
-do not collide). Email attachment: `Folio-backup-<user>-YYYY-MM-DD.json`. Keep both prefixes.
+do not collide). Monthly email attachment: `Folio-backup-<user>-YYYY-MM-DD.json`. Daily email attachment:
+`Folio-daily-YYYY-MM-DD-HHmm.json`. Keep all three prefixes.
 
 ### Restores must apply the WHOLE document
 

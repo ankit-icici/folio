@@ -460,7 +460,7 @@ let flowA=null, flowB=null;   /* custom range, "YYYY-MM" each */
 let flowTouched=false;        /* false = the whole period is selected */
 let targetDraft={}, buyDraft={}, planMode="add", planAmt="", planMoves={};
 const POOL2="Satellite";
-const BUILD="v99";   /* keep in step with CACHE in sw.js - shown in Account */
+const BUILD="v100";   /* keep in step with CACHE in sw.js - shown in Account */
 let saveTimer=null, pendingSave=false;
 
 /* ---------- utils ---------- */
@@ -674,8 +674,13 @@ function bkLast(){ let v=0; try{ v=+localStorage.getItem(bkKey())||0; }catch(e){
 /* The banner is permanent - it carries the last-save stamp whether or not a save
    is owing - so this only decides its TONE: quiet when the copy is current, gold
    once 15:30 has gone past without one. */
+/* v100: the bar is OFF. Since 2026-11-27 the backend emails the whole file every day at
+   about 5 pm to an address on a different Google account (dailyBackup in the relay) - the
+   outside-the-account copy this bar existed to get. "Save a copy to this device"
+   stays in the Account sheet. To bring the bar back, return the line below instead. */
+const BK_BAR=false;
 function bkShow(){
-  if(!AUTH||isGuest()||!ready) return false;
+  if(!BK_BAR||!AUTH||isGuest()||!ready) return false;
   return !!(Object.keys(stocks).length||Object.keys(txns).length||meta.mf||meta.esops||meta.history);
 }
 /* "10 Sep at 3:40 pm", with today/yesterday spelled out the way the restore list does */

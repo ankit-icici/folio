@@ -1,5 +1,6 @@
 /* ------------------------------------------------------------------------
-   Mirror of the deployed Apps Script. The web app now serves this code
+   Mirror of the Apps Script project HEAD. The web app serves this code minus the
+   daily backup email block (added to head 2026-11-27; triggers run head, the web app never calls it)
    (Apps Script deployment "Version 16"; its own `?action=ping` reports v:18 -
    the two counters are unrelated, do not try to make them match).
    The editor is the source of truth: re-read it before changing anything.
@@ -177,6 +178,76 @@ function setupMonthlyBackup(){
     .onMonthDay(1).atHour(7).inTimezone('Asia/Kolkata').create();
   if (!props_().getProperty('backup_users')) props_().setProperty('backup_users', BACKUP_USERS);
   return 'trigger installed: 1st of every month, about 7am IST';
+}
+
+/* ---- daily backup email to a second Google account (2026-11-27) -------------
+   Every day at about 5 pm IST the whole account file is emailed, as an attachment, to an
+   address on a DIFFERENT Google account. The live file, the daily snapshots, the monthly
+   archive and the monthly email all sit in this one account; the emailed copies belong to the
+   other one and survive losing this one. Sent every day, changed or not (the owner's choice),
+   with the date and time in the subject. Chosen over a shared Drive folder plus a second
+   script because it has the fewest moving parts and nothing to maintain. The address lives
+   only in the script property `daily_to`, never in this file (the repo copy is public).
+   Triggers run the project head: no new deployment and no new /exec URL were needed. */
+function dailyBackup(){
+  var to = props_().getProperty('daily_to');
+  var owner = Session.getEffectiveUser().getEmail();
+  var names = String(props_().getProperty('backup_users')||BACKUP_USERS)
+                .split(',').map(function(s){return s.trim();}).filter(String);
+  var now = new Date();
+  var when = Utilities.formatDate(now, 'Asia/Kolkata', 'd MMM yyyy, h:mm a');
+  var stamp = Utilities.formatDate(now, 'Asia/Kolkata', 'yyyy-MM-dd-HHmm');
+  var atts = [], lines = [], bad = [];
+  for (var i=0;i<names.length;i++){
+    var h = props_().getProperty('u:'+names[i]);
+    var ff = h ? fileFor_(h) : {};
+    if (!ff.f) { bad.push(names[i]+': no data file'); continue; }
+    var txt = ff.f.getBlob().getDataAsString(), d = null;
+    try { d = JSON.parse(txt); } catch(e){}
+    if (!d || !(count_(d,'stocks') || count_(d,'mf','funds'))) { bad.push(names[i]+': data file unreadable or empty'); continue; }
+    atts.push(Utilities.newBlob(txt, 'application/json', 'Folio-daily-'+stamp+'.json'));
+    lines.push(count_(d,'stocks')+' stocks, '+count_(d,'txns')+' transactions, '+
+               count_(d,'mf','funds')+' funds, '+count_(d,'mf','txs')+' fund transactions, '+
+               count_(d,'esops','grants')+' ESOP grants, '+count_(d,'watch')+' on the watchlist.\n'+
+               'Last change saved in Folio: '+(d.savedAt&&!isNaN(new Date(d.savedAt))?Utilities.formatDate(new Date(d.savedAt),'Asia/Kolkata','d MMM yyyy, h:mm a')+' (IST)':'unknown')+'.');
+  }
+  if (!to || !atts.length || bad.length) {   /* fail loudly: silence must never look like success */
+    var msg = {to: to || owner,
+      subject: 'Folio backup PROBLEM · '+when,
+      body: (!to ? 'No address is set for the daily backup email.\n' : '')+
+            (bad.length ? 'Problems:\n'+bad.join('\n')+'\n' : '')+
+            (atts.length ? '\nWhat could be read is attached.\n' : '\nNothing could be attached today.\n')+
+            '\nFix: in the Apps Script project, Project Settings -> Script Properties, check `daily_to` '+
+            '(where this email goes) and `backup_users` (your Folio username).',
+      attachments: atts};
+    if (to && to !== owner) msg.cc = owner;
+    MailApp.sendEmail(msg);
+    return 'problem reported';
+  }
+  MailApp.sendEmail({
+    to: to,
+    subject: 'Folio backup · '+when,
+    body: 'Your Folio data as of '+when+' (IST) is attached.\n\n'+lines.join('\n')+
+          '\n\nWhy this email exists: everything else Folio keeps sits in one Google account. '+
+          'This copy lives in a different one, so it survives losing that account. Every day\'s '+
+          'email is a complete copy; the newest one holds your latest data.\n\n'+
+          'To restore: open Folio, tap the gear, choose "Go back to an earlier version", then '+
+          '"Use a copy saved on my device instead", and paste the contents of the attached file.',
+    attachments: atts
+  });
+  return 'sent to the daily address at '+when;
+}
+
+/* Run once from the editor, after setting the `daily_to` script property: installs (or
+   reinstalls) the trigger - every day, about 5 pm IST - and sends the first email now. */
+function setupDailyBackup(){
+  if (!props_().getProperty('daily_to')) throw new Error('Set the script property daily_to (where the email goes) first.');
+  var t = ScriptApp.getProjectTriggers();
+  for (var i=0;i<t.length;i++)
+    if (t[i].getHandlerFunction()==='dailyBackup') ScriptApp.deleteTrigger(t[i]);
+  ScriptApp.newTrigger('dailyBackup').timeBased()
+    .everyDays(1).atHour(17).nearMinute(0).inTimezone('Asia/Kolkata').create();
+  return 'trigger: every day, about 5 pm IST; '+dailyBackup();
 }
 
 function doGet(e){
